@@ -1,8 +1,14 @@
 import { jsPDF } from "jspdf";
+import {
+  type GonorrheaSites,
+  formatGonorrheaSitesInline,
+  gonorrheaPartnerPdfSiteLayer,
+} from "./gonorrheaSites";
 
 export type PartnerEptInput = {
   generatedAt: Date;
   dxGono: boolean;
+  gonoSites: GonorrheaSites;
   dxChlam: boolean;
   dxSyph: boolean;
   dxTrich: boolean;
@@ -162,7 +168,11 @@ const PARTNER_STI: Record<
 
 function dxSummary(input: PartnerEptInput): string {
   const parts: string[] = [];
-  if (input.dxGono) parts.push("gonorrhea");
+  if (input.dxGono) {
+    parts.push(
+      `gonorrhea (sites: ${formatGonorrheaSitesInline(input.gonoSites)})`,
+    );
+  }
   if (input.dxChlam) parts.push("chlamydia");
   if (input.dxSyph) parts.push("syphilis");
   if (input.dxTrich) parts.push("trichomoniasis");
@@ -263,6 +273,11 @@ export function downloadPartnerEptHandoutPdf(input: PartnerEptInput): void {
       (key === "syphilis" && input.dxSyph) ||
       (key === "trich" && input.dxTrich);
 
+    const gonoLayer =
+      key === "gonorrhea" && input.dxGono
+        ? gonorrheaPartnerPdfSiteLayer(input.gonoSites)
+        : { symptomsExtra: "", whereExtra: "", timelineExtra: "" };
+
     const est = highlight ? 72 : 58;
     if (needNewPage(y, est)) {
       doc.addPage();
@@ -270,11 +285,15 @@ export function downloadPartnerEptHandoutPdf(input: PartnerEptInput): void {
     }
 
     if (highlight) {
+      const extraGono =
+        key === "gonorrhea" && input.dxGono
+          ? ` Anatomic sites recorded: ${formatGonorrheaSitesInline(input.gonoSites)}.`
+          : "";
       y = calloutBox(
         doc,
         y,
         "Matches a diagnosis you checked in DOODLE",
-        `Pay extra attention to this ${block.title.replace(/\s*\(partner angle\)\s*/i, "")} block—you flagged it on the form. If you selected more than one STI, read each matching section.`,
+        `Pay extra attention to this ${block.title.replace(/\s*\(partner angle\)\s*/i, "")} block—you flagged it on the form.${extraGono} If you selected more than one STI, read each matching section.`,
       );
     }
 
@@ -291,14 +310,30 @@ export function downloadPartnerEptHandoutPdf(input: PartnerEptInput): void {
     y += 4;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9.5);
-    y = drawWrapped(doc, block.symptoms, MARGIN + 2, y, CONTENT_W - 2, 4.2, 9.5);
+    y = drawWrapped(
+      doc,
+      block.symptoms + gonoLayer.symptomsExtra,
+      MARGIN + 2,
+      y,
+      CONTENT_W - 2,
+      4.2,
+      9.5,
+    );
     y += 3;
 
     doc.setFont("helvetica", "bold");
     doc.text("Where it lives / how testing works:", MARGIN, y);
     y += 4;
     doc.setFont("helvetica", "normal");
-    y = drawWrapped(doc, block.where, MARGIN + 2, y, CONTENT_W - 2, 4.2, 9.5);
+    y = drawWrapped(
+      doc,
+      block.where + gonoLayer.whereExtra,
+      MARGIN + 2,
+      y,
+      CONTENT_W - 2,
+      4.2,
+      9.5,
+    );
     y += 3;
 
     doc.setFont("helvetica", "bold");
@@ -314,7 +349,7 @@ export function downloadPartnerEptHandoutPdf(input: PartnerEptInput): void {
     doc.setFont("helvetica", "normal");
     y = drawWrapped(
       doc,
-      block.timelineDoDont,
+      block.timelineDoDont + gonoLayer.timelineExtra,
       MARGIN + 2,
       y,
       CONTENT_W - 2,

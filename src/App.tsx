@@ -62,6 +62,14 @@ import {
   literacyCounselingPoints,
   preferredLanguageDisplayName,
 } from "./patientEducationCopy";
+import {
+  EMPTY_GONORRHEA_SITES,
+  GONORRHEA_SITE_META,
+  type GonorrheaSiteId,
+  type GonorrheaSites,
+  formatGonorrheaSitesSummary,
+  gonorrheaSiteEducationBullets,
+} from "./gonorrheaSites";
 
 /** Renders P_G,base^XR (PGx base activity factor). */
 function NotationPGbaseXR({ className }: { className?: string }) {
@@ -331,6 +339,9 @@ export default function App() {
   const [pocMicState, setPocMicState] = useState<UsStateCode>("NY");
 
   const [dxGono, setDxGono] = useState(false);
+  const [gonorrheaSites, setGonorrheaSites] = useState<GonorrheaSites>(
+    EMPTY_GONORRHEA_SITES,
+  );
   const [dxChlam, setDxChlam] = useState(false);
   const [dxSyph, setDxSyph] = useState(false);
   const [dxTrich, setDxTrich] = useState(false);
@@ -448,6 +459,7 @@ export default function App() {
     setHealthLiteracy("adequate");
     setPreferredLanguage("english");
     setLanguageOtherSpecify("");
+    setGonorrheaSites(EMPTY_GONORRHEA_SITES);
   }
 
   function generate() {
@@ -458,6 +470,24 @@ export default function App() {
     }, 1500);
   }
 
+  async function handlePartnerEptHandoutPdf() {
+    const { downloadPartnerEptHandoutPdf } = await import(
+      "./partnerEptHandoutPdf"
+    );
+    downloadPartnerEptHandoutPdf({
+      generatedAt: new Date(),
+      dxGono,
+      gonoSites: gonorrheaSites,
+      dxChlam,
+      dxSyph,
+      dxTrich,
+      preferredLanguageLabel: preferredLanguageDisplayName(
+        preferredLanguage,
+        languageOtherSpecify,
+      ),
+    });
+  }
+
   async function handlePatientHandoutPdf() {
     const { downloadPatientHandoutPdf } = await import("./patientHandoutPdf");
     downloadPatientHandoutPdf({
@@ -466,6 +496,7 @@ export default function App() {
       effectiveGyrA,
       mainLine,
       dxGono,
+      gonoSites: gonorrheaSites,
       dxChlam,
       dxSyph,
       dxTrich,
@@ -641,8 +672,24 @@ export default function App() {
                       Confirmed diagnosis
                     </legend>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="dx-Gonorrhea"
+                          checked={dxGono}
+                          onCheckedChange={(c) => {
+                            const on = c === true;
+                            setDxGono(on);
+                            if (!on) setGonorrheaSites(EMPTY_GONORRHEA_SITES);
+                          }}
+                        />
+                        <Label
+                          htmlFor="dx-Gonorrhea"
+                          className="cursor-pointer font-normal"
+                        >
+                          Gonorrhea
+                        </Label>
+                      </div>
                       {[
-                        ["Gonorrhea", dxGono, setDxGono],
                         ["Chlamydia", dxChlam, setDxChlam],
                         ["Syphilis", dxSyph, setDxSyph],
                         ["Trichomoniasis", dxTrich, setDxTrich],
@@ -667,6 +714,47 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+                    {dxGono ? (
+                      <div className="mt-4 space-y-3 rounded-md border border-dashed border-primary/30 bg-primary/5 p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          Gonorrhea anatomic site
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Select every site with exposure or symptoms. Education,
+                          MIC context, and PDF handouts use this to stress the
+                          right swabs and partner testing.
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-1">
+                          {(
+                            [
+                              "urogenital",
+                              "rectal",
+                              "pharyngeal",
+                            ] as GonorrheaSiteId[]
+                          ).map((id) => (
+                            <div key={id} className="flex items-start gap-2">
+                              <Checkbox
+                                id={`gono-site-${id}`}
+                                checked={gonorrheaSites[id]}
+                                onCheckedChange={(c) =>
+                                  setGonorrheaSites((prev) => ({
+                                    ...prev,
+                                    [id]: c === true,
+                                  }))
+                                }
+                                className="mt-0.5"
+                              />
+                              <Label
+                                htmlFor={`gono-site-${id}`}
+                                className="cursor-pointer font-normal leading-snug"
+                              >
+                                {GONORRHEA_SITE_META[id].label}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </fieldset>
 
                   {dxGono ? (
@@ -682,6 +770,13 @@ export default function App() {
                         <span className="font-medium">state of care / residence</span>{" "}
                         to map into the regional MIC archetype (no ZIP entry in
                         this screen).
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Extra-genital gonorrhea (rectal or throat) is not
+                        detected by urine alone—match NAAT swabs to the sites you
+                        checked under{" "}
+                        <span className="font-medium">Confirmed diagnosis</span>
+                        .
                       </p>
 
                       <div className="space-y-2">
@@ -848,9 +943,13 @@ export default function App() {
                 <CardDescription>
                   Health literacy and preferred language shape how you explain
                   the plan, choose handouts, and arrange interpretation.
+                  {dxGono
+                    ? " With gonorrhea checked, site-specific counseling is previewed below."
+                    : ""}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-5 sm:grid-cols-2">
+              <CardContent className="space-y-5">
+                <div className="grid gap-5 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="health-literacy">Health literacy level</Label>
                   <Select
@@ -910,6 +1009,24 @@ export default function App() {
                     />
                   ) : null}
                 </div>
+                </div>
+                {dxGono ? (
+                  <div className="rounded-md border border-primary/20 bg-muted/30 p-4">
+                    <p className="mb-2 text-sm font-medium text-foreground">
+                      Gonorrhea sites (feeds handouts &amp; output education)
+                    </p>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      {formatGonorrheaSitesSummary(gonorrheaSites)}
+                    </p>
+                    <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+                      {gonorrheaSiteEducationBullets(gonorrheaSites).map(
+                        (line) => (
+                          <li key={line}>{line}</li>
+                        ),
+                      )}
+                    </ul>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
 
@@ -980,6 +1097,7 @@ export default function App() {
               </CardHeader>
               {(pregnant ||
                 effectiveGyrA === "mutant" ||
+                dxGono ||
                 dxChlam ||
                 dxSyph ||
                 dxTrich) && (
@@ -989,6 +1107,7 @@ export default function App() {
                     {[
                       pregnant && "pregnancy",
                       effectiveGyrA === "mutant" && "gyrA variant (POC vs ref)",
+                      dxGono && formatGonorrheaSitesSummary(gonorrheaSites),
                       dxChlam && "chlamydia",
                       dxSyph && "syphilis",
                       dxTrich && "trichomoniasis",
@@ -1018,8 +1137,9 @@ export default function App() {
                 <AlertTriangle className="size-4" aria-hidden />
                 <AlertTitle>Hard stop</AlertTitle>
                 <AlertDescription className="text-red-950 dark:text-red-50">
-                  ⛔ Pharyngeal gonorrhea + severe allergy. No safe alternative.
-                  Consult ID.
+                  {gonorrheaSites.pharyngeal
+                    ? "⛔ Pharyngeal gonorrhea + severe beta-lactam allergy: regimen choice is especially difficult. Consult Infectious Diseases."
+                    : "⛔ Gonorrhea with high-risk penicillin/cephalosporin allergy: ceftriaxone-based pathways may be unsafe. Consult Infectious Diseases for culture-guided or alternative plans."}
                 </AlertDescription>
               </Alert>
 
@@ -1051,10 +1171,11 @@ export default function App() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-auto flex-col gap-2 py-4"
+                  className="h-auto flex-col gap-2 border-primary/40 bg-primary/5 py-4 hover:bg-primary/10"
+                  onClick={handlePartnerEptHandoutPdf}
                 >
                   <Users className="size-5" aria-hidden />
-                  Partner EPT Rx
+                  Partner EPT (PDF)
                 </Button>
                 <Button
                   type="button"
@@ -1090,9 +1211,29 @@ export default function App() {
                   </CardTitle>
                   <CardDescription>
                     Based on the literacy and language selections from intake.
+                    {dxGono
+                      ? " Gonorrhea site choices below tailor testing and counseling language."
+                      : ""}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-6 sm:grid-cols-2">
+                  {dxGono ? (
+                    <div className="sm:col-span-2 rounded-md border border-primary/25 bg-background/80 p-4">
+                      <p className="mb-2 text-sm font-medium text-foreground">
+                        Gonorrhea — anatomic site counseling
+                      </p>
+                      <p className="mb-2 text-xs text-muted-foreground">
+                        {formatGonorrheaSitesSummary(gonorrheaSites)}
+                      </p>
+                      <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+                        {gonorrheaSiteEducationBullets(gonorrheaSites).map(
+                          (line) => (
+                            <li key={line}>{line}</li>
+                          ),
+                        )}
+                      </ul>
+                    </div>
+                  ) : null}
                   <div>
                     <p className="mb-2 text-sm font-medium text-foreground">
                       Preferred language:{" "}

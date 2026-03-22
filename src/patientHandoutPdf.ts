@@ -1,4 +1,9 @@
 import { jsPDF } from "jspdf";
+import {
+  type GonorrheaSites,
+  formatGonorrheaSitesInline,
+  gonorrheaSitesPatientPdfAddendum,
+} from "./gonorrheaSites";
 
 export type HandoutGyrA = "not-tested" | "wild" | "mutant";
 
@@ -8,6 +13,7 @@ export type PatientHandoutInput = {
   effectiveGyrA: HandoutGyrA;
   mainLine: string;
   dxGono: boolean;
+  gonoSites: GonorrheaSites;
   dxChlam: boolean;
   dxSyph: boolean;
   dxTrich: boolean;
@@ -187,7 +193,26 @@ export function downloadPatientHandoutPdf(input: PatientHandoutInput): void {
   doc.setFontSize(10.5);
   const summary = stripForPdf(input.mainLine);
   y = drawWrapped(doc, summary, MARGIN, y, CONTENT_W, 4.8, 10.5);
-  y += 6;
+  y += 5;
+  if (input.dxGono) {
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9);
+    doc.setTextColor(...MUTED);
+    y = drawWrapped(
+      doc,
+      `Gonorrhea anatomic sites recorded: ${formatGonorrheaSitesInline(input.gonoSites)}.`,
+      MARGIN,
+      y,
+      CONTENT_W,
+      4.2,
+      9,
+    );
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...SLATE);
+    y += 5;
+  } else {
+    y += 1;
+  }
 
   if (input.pregnant) {
     doc.setFont("helvetica", "italic");
@@ -373,7 +398,28 @@ export function downloadPatientHandoutPdf(input: PatientHandoutInput): void {
         4.2,
         9.5,
       );
-      y += 8;
+      y += 4;
+      if (key === "gonorrhea" && input.dxGono) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(...TEAL);
+        doc.text("Anatomic sites (from your form):", MARGIN, y);
+        y += 4;
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...SLATE);
+        doc.setFontSize(9.5);
+        y = drawWrapped(
+          doc,
+          gonorrheaSitesPatientPdfAddendum(input.gonoSites),
+          MARGIN + 2,
+          y,
+          CONTENT_W - 2,
+          4.2,
+          9.5,
+        );
+        y += 4;
+      }
+      y += 4;
     }
   } else {
     if (needNewPage(y, 24)) {
