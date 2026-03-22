@@ -51,7 +51,27 @@ const tierStyles: Record<
   },
 };
 
-export function AdherenceScreener() {
+type AdherenceScreenerProps = {
+  sdohCost: boolean;
+  sdohTransport: boolean;
+  sdohHousing: boolean;
+  sdohFood: boolean;
+  onSdohCostChange: (value: boolean) => void;
+  onSdohTransportChange: (value: boolean) => void;
+  onSdohHousingChange: (value: boolean) => void;
+  onSdohFoodChange: (value: boolean) => void;
+};
+
+export function AdherenceScreener({
+  sdohCost,
+  sdohTransport,
+  sdohHousing,
+  sdohFood,
+  onSdohCostChange,
+  onSdohTransportChange,
+  onSdohHousingChange,
+  onSdohFoodChange,
+}: AdherenceScreenerProps) {
   const [age, setAge] = useState(28);
   const [literacyLevel, setLiteracyLevel] = useState<LiteracyLevel>("Medium");
   const [priorNonAdherence, setPriorNonAdherence] = useState(false);
@@ -62,11 +82,7 @@ export function AdherenceScreener() {
   const [isBID, setIsBID] = useState(false);
   const [numMedications, setNumMedications] = useState(1);
 
-  const [sdohCost, setSdohCost] = useState(false);
-  const [sdohTransport, setSdohTransport] = useState(false);
-  const [sdohHousing, setSdohHousing] = useState(false);
   const [sdohUninsured, setSdohUninsured] = useState(false);
-  const [sdohFood, setSdohFood] = useState(false);
 
   const patient: AdherencePatient = useMemo(
     () => ({
@@ -292,19 +308,23 @@ export function AdherenceScreener() {
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
               {[
-                ["Worried about medication cost", sdohCost, setSdohCost],
+                [
+                  "Worried about medication cost",
+                  sdohCost,
+                  onSdohCostChange,
+                ],
                 [
                   "Hard to get rides / transportation",
                   sdohTransport,
-                  setSdohTransport,
+                  onSdohTransportChange,
                 ],
                 [
                   "Housing unstable or changing often",
                   sdohHousing,
-                  setSdohHousing,
+                  onSdohHousingChange,
                 ],
                 ["No health insurance", sdohUninsured, setSdohUninsured],
-                ["Not enough food / skip meals", sdohFood, setSdohFood],
+                ["Not enough food / skip meals", sdohFood, onSdohFoodChange],
               ].map(([label, checked, set], i) => (
                 <div key={i} className="flex items-center gap-2">
                   <Checkbox

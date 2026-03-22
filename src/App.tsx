@@ -6,7 +6,6 @@ import {
   ClipboardList,
   FileText,
   Info,
-  Loader2,
   Pill,
   Users,
 } from "lucide-react";
@@ -55,12 +54,22 @@ import {
   parseGyrAPocTxt,
 } from "./gyrAUpload";
 import {
+  generateAlerts,
+  type ClinicalAlert,
+  type TreatmentInput as AlertInput,
+} from "./alertEngine";
+import {
   type HealthLiteracyLevel,
   type PreferredLanguageId,
   languageCounselingPoints,
   literacyCounselingPoints,
   preferredLanguageDisplayName,
 } from "./patientEducationCopy";
+import {
+  generateRecommendation,
+  type TreatmentDrug,
+  type TreatmentInput as RecommendationInput,
+} from "./treatmentRecommendation";
 
 /** Renders P_G,base^XR (PGx base activity factor). */
 function NotationPGbaseXR({ className }: { className?: string }) {
@@ -194,18 +203,59 @@ function GyrAPocSection({
   );
 }
 
+function formatDrugLabel(drug: TreatmentDrug) {
+  const details = [
+    drug.dose !== "N/A" ? drug.dose : null,
+    drug.route !== "N/A" ? drug.route : null,
+    drug.frequency,
+  ].filter((value): value is string => Boolean(value));
+
+  return [drug.name, ...details].join(" · ");
+}
+
+function alertAppearance(severity: ClinicalAlert["severity"]) {
+  switch (severity) {
+    case "hard-stop":
+      return {
+        variant: "destructive" as const,
+        className:
+          "border-red-200 bg-red-50 text-red-950 dark:bg-red-950/30 dark:text-red-100",
+        descriptionClassName: "text-red-950 dark:text-red-50",
+        Icon: AlertTriangle,
+      };
+    case "warning":
+      return {
+        variant: "default" as const,
+        className:
+          "border-amber-200 bg-amber-50 text-amber-950 dark:bg-amber-950/25 dark:text-amber-50",
+        descriptionClassName: "text-amber-950 dark:text-amber-50",
+        Icon: AlertCircle,
+      };
+    default:
+      return {
+        variant: "default" as const,
+        className: "border-border bg-muted/80",
+        descriptionClassName: "",
+        Icon: Info,
+      };
+  }
+}
+
 function ClearanceFormulaPanel({
   weightKg,
   pgBaseXr,
   pgxProfileLabel,
+  albuminRiskCount,
 }: {
   weightKg: number;
   pgBaseXr: number;
   pgxProfileLabel: string;
+  albuminRiskCount: number;
 }) {
+  const albuminAdjustmentPercent = albuminRiskCount * 15;
   const rows = useMemo(
-    () => clearanceRowsForPatient(weightKg, pgBaseXr),
-    [weightKg, pgBaseXr],
+    () => clearanceRowsForPatient(weightKg, pgBaseXr, albuminRiskCount),
+    [weightKg, pgBaseXr, albuminRiskCount],
   );
 
   return (
@@ -223,6 +273,20 @@ function ClearanceFormulaPanel({
           <span className="font-medium text-foreground">{pgxProfileLabel}</span>{" "}
           — <NotationPGbaseXR className="font-medium text-foreground" /> ={" "}
           <span className="font-medium text-foreground">{pgBaseXr}</span>.
+          {albuminRiskCount > 0 ? (
+            <>
+              {" "}
+              Albumin adjustment applied from{" "}
+              <span className="font-medium text-foreground">
+                {albuminRiskCount}
+              </span>{" "}
+              risk flag(s), increasing modeled clearance by{" "}
+              <span className="font-medium text-foreground">
+                {albuminAdjustmentPercent}%
+              </span>
+              .
+            </>
+          ) : null}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -257,7 +321,10 @@ function ClearanceFormulaPanel({
         <p className="text-xs text-muted-foreground">
           At W = {weightKg} kg. Higher C<sub>population</sub> for azithromycin
           reflects extensive tissue distribution (apparent clearance), not
-          faster true elimination alone.
+          faster true elimination alone.{" "}
+          {albuminRiskCount > 0
+            ? `Albumin-adjusted clearance is shown for all rows.`
+            : "No albumin adjustment is applied."}
         </p>
       </CardContent>
     </Card>
@@ -267,7 +334,6 @@ function ClearanceFormulaPanel({
 export default function App() {
   const [section, setSection] = useState<AppSection>("dosing");
   const [view, setView] = useState<View>("intake");
-  const [loading, setLoading] = useState(false);
 
   const [weightKg, setWeightKg] = useState(78);
   const [pregnant, setPregnant] = useState(false);
@@ -314,6 +380,7 @@ export default function App() {
 
   const pgxMeta = getPgxProfileMeta(pgx);
   const pgBaseXr = pgxMeta.pgBaseXr;
+  const albuminRiskCount = [icu, liver, malnourished, ckd].filter(Boolean).length;
 
   const effectiveGyrA = useMemo((): GyrA => {
     if (gyrAPocCompleted) {
@@ -325,10 +392,52 @@ export default function App() {
     return gyrA;
   }, [gyrAPocCompleted, gyrAUploadSummary, gyrA]);
 
+  const recommendationInput: RecommendationInput = {
+    allergyProfile: allergy,
+    pgxProfile: pgx,
+    weightKg,
+    pregnant,
+    diagnoses: {
+      gonorrhea: dxGono,
+      chlamydia: dxChlam,
+      syphilis: dxSyph,
+      trichomoniasis: dxTrich,
+    },
+    gyrAResult: effectiveGyrA,
+    regionalGonorrheaMic90: gonorrheaMic90,
+  };
+
+  const recommendation = generateRecommendation(recommendationInput);
+  const primaryRecommendationLine = formatDrugLabel(recommendation.primaryDrug);
+
+  const alertInput: AlertInput = {
+    weightKg,
+    pregnant,
+    allergy,
+    pgx,
+    gyrA: effectiveGyrA,
+    zipInput: "",
+    residenceState: pocMicState,
+    dxGono,
+    dxChlam,
+    dxSyph,
+    dxTrich,
+    icu,
+    liver,
+    malnourished,
+    ckd,
+    sdohCost,
+    sdohTransport,
+    sdohHousing,
+    sdohFood,
+  };
+
+  const alerts = generateAlerts(alertInput);
+
   const ceftriaxoneCindividualLh = useMemo(() => {
-    const rows = clearanceRowsForPatient(weightKg, pgBaseXr);
+    const rows = clearanceRowsForPatient(weightKg, pgBaseXr, albuminRiskCount);
     return rows[0]?.cindividualLh ?? 0;
-  }, [weightKg, pgBaseXr]);
+  }, [weightKg, pgBaseXr, albuminRiskCount]);
 
   const literacyEducationBullets = useMemo(
     () => literacyCounselingPoints(healthLiteracy),
@@ -338,13 +447,6 @@ export default function App() {
     () => languageCounselingPoints(preferredLanguage, languageOtherSpecify),
     [preferredLanguage, languageOtherSpecify],
   );
-
-  const hardStop = allergy === "high" && dxGono;
-  const mainLine = hardStop
-    ? "Consult Infectious Diseases — no automated pathway"
-    : effectiveGyrA === "mutant"
-      ? "Ceftriaxone 1 g IM ×1 plus azithromycin 1 g PO ×1 — POC vs ref shows variant(s); do not use fluoroquinolone monotherapy (demo pathway)."
-      : "✅ Ceftriaxone 500mg IM × 1 dose";
 
   function onGyrAPocCompletedChange(v: boolean) {
     setGyrAPocCompleted(v);
@@ -379,7 +481,6 @@ export default function App() {
 
   function reset() {
     setView("intake");
-    setLoading(false);
     setGyrAPocCompleted(false);
     setGyrAUploadError(null);
     setGyrAUploadSummary(null);
@@ -390,11 +491,11 @@ export default function App() {
   }
 
   function generate() {
-    setLoading(true);
-    window.setTimeout(() => {
-      setLoading(false);
-      setView("output");
-    }, 1500);
+    setView("output");
+  }
+
+  function showPlannedFeature(label: string) {
+    window.alert(`Feature coming soon: ${label}`);
   }
 
   return (
@@ -441,7 +542,16 @@ export default function App() {
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
         <TabsContent value="adherence" className="mt-0 outline-none">
-          <AdherenceScreener />
+          <AdherenceScreener
+            sdohCost={sdohCost}
+            sdohTransport={sdohTransport}
+            sdohHousing={sdohHousing}
+            sdohFood={sdohFood}
+            onSdohCostChange={setSdohCost}
+            onSdohTransportChange={setSdohTransport}
+            onSdohHousingChange={setSdohHousing}
+            onSdohFoodChange={setSdohFood}
+          />
         </TabsContent>
 
         <TabsContent value="dosing" className="mt-0 outline-none">
@@ -830,23 +940,16 @@ export default function App() {
               weightKg={weightKg}
               pgBaseXr={pgBaseXr}
               pgxProfileLabel={pgxMeta.label}
+              albuminRiskCount={albuminRiskCount}
             />
 
             <Button
               type="button"
               size="lg"
-              disabled={loading}
               onClick={generate}
               className="h-auto w-full py-4 text-lg"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="size-6 animate-spin" aria-hidden />
-                  Analyzing patient parameters…
-                </>
-              ) : (
-                <>GENERATE RECOMMENDATION →</>
-              )}
+              GENERATE RECOMMENDATION →
             </Button>
           </div>
         )}
@@ -865,96 +968,133 @@ export default function App() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Active recommendation
                 </p>
-                <CardTitle className="text-2xl sm:text-3xl">{mainLine}</CardTitle>
+                <CardTitle className="text-2xl sm:text-3xl">
+                  {primaryRecommendationLine}
+                </CardTitle>
                 <CardDescription className="text-base text-foreground/80">
-                  {hardStop ? (
-                    "High-risk allergy with gonorrhea diagnosis requires ID-guided therapy."
-                  ) : effectiveGyrA === "mutant" ? (
-                    <>
-                      Uploaded POC differs from the built-in reference (gyrA
-                      window). This demo escalates to{" "}
-                      <span className="font-medium">ceftriaxone + azithromycin</span>{" "}
-                      and flags fluoroquinolone monotherapy as inappropriate for
-                      this signal. Confirm with culture, AST, and current CDC /
-                      local guidance.
-                    </>
+                  {recommendation.hardStop.active ? (
+                    recommendation.hardStop.reason
                   ) : (
                     <>
                       Ceftriaxone C<sub>individual</sub> ≈{" "}
                       {ceftriaxoneCindividualLh} L/h (PGx: {pgxMeta.label}){" "}
                       (C<sub>population</sub> ={" "}
                       {CPOPULATION_LH.ceftriaxoneGonorrhea} L/h,{" "}
-                      <NotationPGbaseXR /> = {pgBaseXr}). See allometric table
-                      below. Guideline-consistent target attainment; standard
-                      dose adequate for this clearance estimate.
+                      <NotationPGbaseXR /> = {pgBaseXr}
+                      {albuminRiskCount > 0
+                        ? `, albumin risk flags = ${albuminRiskCount}`
+                        : ""}
+                      ). See the allometric table below for the adjusted
+                      regimen context.
                     </>
                   )}
                 </CardDescription>
               </CardHeader>
-              {(pregnant ||
-                effectiveGyrA === "mutant" ||
-                dxChlam ||
-                dxSyph ||
-                dxTrich) && (
-                <CardContent className="pt-0">
-                  <p className="text-xs text-muted-foreground">
-                    Context captured:{" "}
-                    {[
-                      pregnant && "pregnancy",
-                      effectiveGyrA === "mutant" && "gyrA variant (POC vs ref)",
-                      dxChlam && "chlamydia",
-                      dxSyph && "syphilis",
-                      dxTrich && "trichomoniasis",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+              <CardContent className="grid gap-6 pt-0 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Primary drug
+                  </h3>
+                  <p className="font-medium text-foreground">
+                    {primaryRecommendationLine}
                   </p>
-                </CardContent>
-              )}
+                  {recommendation.hardStop.active &&
+                  recommendation.hardStop.reason ? (
+                    <p className="text-sm text-destructive">
+                      {recommendation.hardStop.reason}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Co-treatments
+                  </h3>
+                  {recommendation.coTreatments.length > 0 ? (
+                    <ul className="space-y-2 text-sm text-foreground/90">
+                      {recommendation.coTreatments.map((drug) => (
+                        <li key={formatDrugLabel(drug)}>
+                          {formatDrugLabel(drug)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No additional co-treatments generated.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Warnings
+                  </h3>
+                  {recommendation.warnings.length > 0 ? (
+                    <ul className="space-y-2 text-sm text-foreground/90">
+                      {recommendation.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No active warnings from the treatment engine.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Context notes
+                  </h3>
+                  {recommendation.contextNotes.length > 0 ? (
+                    <ul className="space-y-2 text-sm text-foreground/90">
+                      {recommendation.contextNotes.map((note) => (
+                        <li key={note}>{note}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No extra context notes were generated.
+                    </p>
+                  )}
+                </div>
+              </CardContent>
             </Card>
 
             <ClearanceFormulaPanel
               weightKg={weightKg}
               pgBaseXr={pgBaseXr}
               pgxProfileLabel={pgxMeta.label}
+              albuminRiskCount={albuminRiskCount}
             />
 
-            <div className="space-y-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Alert architecture
-              </h2>
+            {alerts.length > 0 ? (
+              <>
+                <div className="space-y-4">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                    Alert architecture
+                  </h2>
 
-              <Alert
-                variant="destructive"
-                className="border-red-200 bg-red-50 text-red-950 dark:bg-red-950/30 dark:text-red-100"
-              >
-                <AlertTriangle className="size-4" aria-hidden />
-                <AlertTitle>Hard stop</AlertTitle>
-                <AlertDescription className="text-red-950 dark:text-red-50">
-                  ⛔ Pharyngeal gonorrhea + severe allergy. No safe alternative.
-                  Consult ID.
-                </AlertDescription>
-              </Alert>
+                  {alerts.map((alert) => {
+                    const { Icon, variant, className, descriptionClassName } =
+                      alertAppearance(alert.severity);
 
-              <Alert className="border-amber-200 bg-amber-50 text-amber-950 dark:bg-amber-950/25 dark:text-amber-50">
-                <AlertCircle className="size-4 text-amber-700" aria-hidden />
-                <AlertTitle>PGx advisory</AlertTitle>
-                <AlertDescription className="text-amber-950 dark:text-amber-50">
-                  ⚠ ABCB1 low-function detected. Expect 2× azithromycin levels.
-                  Monitor for toxicity.
-                </AlertDescription>
-              </Alert>
+                    return (
+                      <Alert
+                        key={alert.id}
+                        variant={variant}
+                        className={className}
+                      >
+                        <Icon className="size-4" aria-hidden />
+                        <AlertTitle>{alert.title}</AlertTitle>
+                        <AlertDescription className={descriptionClassName}>
+                          {alert.description}
+                        </AlertDescription>
+                      </Alert>
+                    );
+                  })}
+                </div>
 
-              <Alert className="border-border bg-muted/80">
-                <Info className="size-4" aria-hidden />
-                <AlertTitle>SDOH flag</AlertTitle>
-                <AlertDescription>
-                  Transportation barrier detected. Single-dose DOT recommended.
-                </AlertDescription>
-              </Alert>
-            </div>
-
-            <Separator />
+                <Separator />
+              </>
+            ) : null}
 
             <section>
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -971,6 +1111,7 @@ export default function App() {
                     type="button"
                     variant="outline"
                     className="h-auto flex-col gap-2 py-4"
+                    onClick={() => showPlannedFeature(label as string)}
                   >
                     <Icon className="size-5" aria-hidden />
                     {label as string}
