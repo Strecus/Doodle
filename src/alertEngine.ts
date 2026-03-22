@@ -8,7 +8,11 @@ export interface ClinicalAlert {
 }
 
 export type AllergyProfile = "none" | "low" | "high";
-export type PgxProfile = "normal" | "abcb1-low" | "abcb1-high";
+export type PgxProfile =
+  | "unknown"
+  | "normal"
+  | "abcb1-low"
+  | "abcb1-high";
 export type GyrAResult = "not-tested" | "wild" | "mutant";
 
 export interface TreatmentInput {

@@ -118,10 +118,15 @@ test("returns gonorrhea-first recommendations with genotype and MIC context", ()
 
   assert.deepEqual(recommendation.primaryDrug, {
     name: "Ceftriaxone",
-    dose: "500 mg",
+    dose: "550 mg",
     route: "IM",
     frequency: "x 1",
   });
+  assert.ok(
+    recommendation.contextNotes.some((n) =>
+      n.includes("Ceftriaxone dose (demo):"),
+    ),
+  );
   assert.ok(
     recommendation.contextNotes.includes(
       "Low-risk cephalosporin allergy noted - proceed with ceftriaxone and monitor after administration.",
@@ -137,6 +142,29 @@ test("returns gonorrhea-first recommendations with genotype and MIC context", ()
       "Regional gonorrhea MIC90 0.125 ug/mL recorded for local susceptibility context.",
     ),
   );
+});
+
+test("ceftriaxone dose uses PGxR = 1 when PGx unknown and anchors 500 mg at 70 kg", () => {
+  const recommendation = generateRecommendation(
+    createInput({
+      pgxProfile: "unknown",
+      weightKg: 70,
+      diagnoses: {
+        gonorrhea: true,
+        chlamydia: false,
+        syphilis: false,
+        trichomoniasis: false,
+      },
+      regionalGonorrheaMic90: 0.015,
+    }),
+  );
+
+  assert.deepEqual(recommendation.primaryDrug, {
+    name: "Ceftriaxone",
+    dose: "500 mg",
+    route: "IM",
+    frequency: "x 1",
+  });
 });
 
 test("adds syphilis and trichomoniasis co-treatment advisories", () => {

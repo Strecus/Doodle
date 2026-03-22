@@ -36,11 +36,16 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CPOPULATION_LH,
-  PGX_PROFILE_IDS,
-  type PgxProfileId,
   clearanceRowsForPatient,
   getPgxProfileMeta,
 } from "./clearance";
+import {
+  DEFAULT_HOST_PGX_PERSONA_ID,
+  HOST_PGX_PERSONAS,
+  type HostPgxPersonaId,
+  getHostPgxPersona,
+  isHostPgxPersonaId,
+} from "./hostPgxPersonas";
 import {
   US_STATE_CODES,
   calculateMIC90,
@@ -406,7 +411,14 @@ export default function App() {
   const [weightKg, setWeightKg] = useState(78);
   const [pregnant, setPregnant] = useState(false);
   const [allergy, setAllergy] = useState<Allergy>("none");
-  const [pgx, setPgx] = useState<PgxProfileId>("normal");
+  const [hostPgxPersonaId, setHostPgxPersonaId] = useState<HostPgxPersonaId>(
+    DEFAULT_HOST_PGX_PERSONA_ID,
+  );
+  const hostPersona = useMemo(
+    () => getHostPgxPersona(hostPgxPersonaId),
+    [hostPgxPersonaId],
+  );
+  const pgx = hostPersona.pgxProfile;
   const [gyrA, setGyrA] = useState<GyrA>("not-tested");
   const [gyrAPocCompleted, setGyrAPocCompleted] = useState(false);
   const [gyrAUploadError, setGyrAUploadError] = useState<string | null>(null);
@@ -628,7 +640,13 @@ export default function App() {
       pregnant,
       weightKg,
       ceftriaxoneCindividualLh,
-      pgxLabel: pgxMeta.label,
+      ceftriaxoneDoseLabel:
+        !recommendation.hardStop.active &&
+        dxGono &&
+        recommendation.primaryDrug.name === "Ceftriaxone"
+          ? recommendation.primaryDrug.dose
+          : undefined,
+      pgxLabel: `${hostPersona.name} — ${pgxMeta.label}`,
       preferredLanguageLabel: preferredLanguageDisplayName(
         preferredLanguage,
         languageOtherSpecify,
@@ -725,29 +743,31 @@ export default function App() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="pgx">Host PGx profile</Label>
+                    <Label htmlFor="host-pgx-persona">Host (PGx)</Label>
                     <Select
-                      value={pgx}
-                      onValueChange={(v) => setPgx(v as PgxProfileId)}
+                      value={hostPgxPersonaId}
+                      onValueChange={(v) => {
+                        if (isHostPgxPersonaId(v)) setHostPgxPersonaId(v);
+                      }}
                     >
-                      <SelectTrigger id="pgx" className="w-full">
+                      <SelectTrigger id="host-pgx-persona" className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {PGX_PROFILE_IDS.map((id) => {
-                          const m = getPgxProfileMeta(id);
-                          return (
-                            <SelectItem key={id} value={id}>
-                              {m.label} — P_G,base^XR = {m.pgBaseXr}
-                            </SelectItem>
-                          );
-                        })}
+                        {HOST_PGX_PERSONAS.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground/90">
+                        {hostPersona.name}
+                      </span>
+                      : {pgxMeta.label}.{" "}
                       <NotationPGbaseXR className="font-medium text-foreground/80" />{" "}
-                      is set from this profile and scales{" "}
-                      C<sub>individual</sub> in{" "}
+                      = {pgBaseXr}, scaling C<sub>individual</sub> in{" "}
                       <span className="font-mono text-foreground/80">
                         C<sub>individual</sub> = C<sub>population</sub> ×
                         (W/70)<sup>0.75</sup> × <NotationPGbaseXR />.
@@ -1167,7 +1187,7 @@ export default function App() {
             <ClearanceFormulaPanel
               weightKg={weightKg}
               pgBaseXr={pgBaseXr}
-              pgxProfileLabel={pgxMeta.label}
+              pgxProfileLabel={`${hostPersona.name} — ${pgxMeta.label}`}
               albuminRiskCount={albuminRiskCount}
             />
 
@@ -1205,7 +1225,8 @@ export default function App() {
                   ) : (
                     <>
                       Ceftriaxone C<sub>individual</sub> ≈{" "}
-                      {ceftriaxoneCindividualLh} L/h (PGx: {pgxMeta.label}){" "}
+                      {ceftriaxoneCindividualLh} L/h (
+                      {hostPersona.name}; PGx: {pgxMeta.label}){" "}
                       (C<sub>population</sub> ={" "}
                       {CPOPULATION_LH.ceftriaxoneGonorrhea} L/h,{" "}
                       <NotationPGbaseXR /> = {pgBaseXr}
@@ -1297,7 +1318,7 @@ export default function App() {
             <ClearanceFormulaPanel
               weightKg={weightKg}
               pgBaseXr={pgBaseXr}
-              pgxProfileLabel={pgxMeta.label}
+              pgxProfileLabel={`${hostPersona.name} — ${pgxMeta.label}`}
               albuminRiskCount={albuminRiskCount}
             />
 

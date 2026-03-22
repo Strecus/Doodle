@@ -20,6 +20,8 @@ export type PatientHandoutInput = {
   pregnant: boolean;
   weightKg: number;
   ceftriaxoneCindividualLh: number;
+  /** When set, overrides the default "500 mg" ceftriaxone line in the wild-type schedule. */
+  ceftriaxoneDoseLabel?: string;
   pgxLabel: string;
   preferredLanguageLabel: string;
 };
@@ -70,7 +72,7 @@ function buildSchedule(input: PatientHandoutInput): ScheduleRow[] | null {
   return [
     {
       medicine: "Ceftriaxone",
-      dose: "500 mg",
+      dose: input.ceftriaxoneDoseLabel ?? "500 mg",
       how: "Injection into a large muscle (buttock or thigh) by your nurse or clinician.",
       when: "Once, during your clinic visit.",
     },

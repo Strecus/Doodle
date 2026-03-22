@@ -18,7 +18,12 @@ export const CPOP_LH = CPOPULATION_LH;
 export const DEFAULT_PG_BASE_XR = 1;
 
 /** Ordered keys for Host PGx profile UI. */
-export const PGX_PROFILE_IDS = ["normal", "abcb1-low", "abcb1-high"] as const;
+export const PGX_PROFILE_IDS = [
+  "unknown",
+  "normal",
+  "abcb1-low",
+  "abcb1-high",
+] as const;
 
 export type PgxProfileId = (typeof PGX_PROFILE_IDS)[number];
 
@@ -27,9 +32,22 @@ export const PGX_PROFILE_PG_BASE_XR: Record<
   PgxProfileId,
   { label: string; pgBaseXr: number }
 > = {
-  normal: { label: "Normal function", pgBaseXr: 0.91 },
-  "abcb1-low": { label: "ABCB1 low function", pgBaseXr: 0.35 },
-  "abcb1-high": { label: "ABCB1 high function", pgBaseXr: 0.96 },
+  unknown: {
+    label: "Your PGx — not on file yet (placeholder until your results)",
+    pgBaseXr: 1,
+  },
+  normal: {
+    label: "Your PGx — ABCB1 (MDR1) *1/*1, reference diplotype",
+    pgBaseXr: 0.91,
+  },
+  "abcb1-low": {
+    label: "Your PGx — ABCB1 (MDR1) *2/*3, reduced transport (demo)",
+    pgBaseXr: 0.35,
+  },
+  "abcb1-high": {
+    label: "Your PGx — ABCB1 (MDR1) *1/*8, increased transport (demo)",
+    pgBaseXr: 0.96,
+  },
 };
 
 export function getPgxProfileMeta(id: PgxProfileId) {

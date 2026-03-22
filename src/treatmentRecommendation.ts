@@ -1,4 +1,12 @@
-import type { PgxProfileId } from "./clearance";
+import {
+  type PgxProfileId,
+  CPOPULATION_LH,
+  getPgxProfileMeta,
+} from "./clearance";
+import {
+  ceftriaxoneGonorrheaDoseMg,
+  formatCeftriaxoneDoseMg,
+} from "./ceftriaxoneGonorrheaDose";
 
 export type AllergyProfile = "none" | "low" | "high";
 export type GyrAResult = "not-tested" | "wild" | "mutant";
@@ -85,7 +93,7 @@ export function generateRecommendation(
     };
   }
 
-  if (input.pgxProfile !== "normal") {
+  if (input.pgxProfile !== "normal" && input.pgxProfile !== "unknown") {
     pushUnique(
       contextNotes,
       `PGx profile ${input.pgxProfile} recorded; no guideline-driven regimen change is applied here.`,
@@ -114,7 +122,19 @@ export function generateRecommendation(
         "High-risk cephalosporin allergy precludes standard ceftriaxone treatment.",
       );
     } else {
-      regimens.push(createDrug("Ceftriaxone", "500 mg", "IM", "x 1"));
+      const pgxr = getPgxProfileMeta(input.pgxProfile).pgBaseXr;
+      const ceftriaxoneDose = formatCeftriaxoneDoseMg(
+        ceftriaxoneGonorrheaDoseMg({
+          weightKg: input.weightKg,
+          pgBaseXr: pgxr,
+          regionalGonorrheaMic90: input.regionalGonorrheaMic90,
+        }),
+      );
+      regimens.push(createDrug("Ceftriaxone", ceftriaxoneDose, "IM", "x 1"));
+      pushUnique(
+        contextNotes,
+        `Ceftriaxone dose (demo): C_pop (${CPOPULATION_LH.ceftriaxoneGonorrhea} L/h) × (W/70)^0.75 × PGxR (${pgxr}) × regional MIC factor, anchored to 500 mg at 70 kg / PGxR 1 / baseline MIC.`,
+      );
 
       if (input.allergyProfile === "low") {
         pushUnique(
