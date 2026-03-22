@@ -38,14 +38,20 @@ export function getPgxProfileMeta(id: PgxProfileId) {
 
 /**
  * Individual clearance (L/hr):
- * C_individual = C_population × (weightKg / 70)^0.75 × P_G,base^XR
+ * C_individual = C_population × (weightKg / 70)^0.75 × P_G,base^XR × albuminFactor
+ *
+ * For highly protein-bound drugs such as ceftriaxone, hypoalbuminemia can raise the
+ * free fraction and increase apparent clearance of the unbound fraction. The optional
+ * albumin risk count approximates that effect at 15% per checked albumin risk flag.
  */
 export function clearanceIndividualLh(
   cpopulationLh: number,
   weightKg: number,
   pgBaseXr: number = DEFAULT_PG_BASE_XR,
+  albuminRiskCount: number = 0,
 ): number {
-  return cpopulationLh * (weightKg / 70) ** 0.75 * pgBaseXr;
+  const albuminFactor = albuminRiskCount > 0 ? 1 + albuminRiskCount * 0.15 : 1;
+  return cpopulationLh * (weightKg / 70) ** 0.75 * pgBaseXr * albuminFactor;
 }
 
 export function roundClearanceLh(value: number, decimals = 2): number {
@@ -58,12 +64,14 @@ export type ClearanceDrugRow = {
   indication: string;
   cpopulationLh: number;
   cindividualLh: number;
+  albuminAdjusted?: boolean;
 };
 
 /** Rows for UI: C_population per agent and C_individual at this weight and P_G,base^XR. */
 export function clearanceRowsForPatient(
   weightKg: number,
   pgBaseXr: number = DEFAULT_PG_BASE_XR,
+  albuminRiskCount: number = 0,
 ): ClearanceDrugRow[] {
   const row = (
     drug: string,
@@ -74,8 +82,14 @@ export function clearanceRowsForPatient(
     indication,
     cpopulationLh,
     cindividualLh: roundClearanceLh(
-      clearanceIndividualLh(cpopulationLh, weightKg, pgBaseXr),
+      clearanceIndividualLh(
+        cpopulationLh,
+        weightKg,
+        pgBaseXr,
+        albuminRiskCount,
+      ),
     ),
+    ...(albuminRiskCount > 0 ? { albuminAdjusted: true } : {}),
   });
   return [
     row("Ceftriaxone", "Gonorrhea", CPOPULATION_LH.ceftriaxoneGonorrhea),
