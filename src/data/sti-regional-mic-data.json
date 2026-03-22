@@ -1,0 +1,100 @@
+{
+  "metadata": {
+    "source": "Simulated National STI Surveillance & Resistance Data (MVP)",
+    "description": "Unified format. Gonorrhea uses GISP variance. Chlamydia/Syphilis hardcoded to 1.0 probability (100% susceptible) to enforce Adherence Risk routing."
+  },
+  "regional_mic_archetypes": {
+    "Northeast": {
+      "gonorrhea_mic_distribution": [
+        { "mic": 0.015, "probability": 0.85 },
+        { "mic": 0.03, "probability": 0.1 },
+        { "mic": 0.125, "probability": 0.04 },
+        { "mic": 0.5, "probability": 0.01 }
+      ],
+      "chlamydia_mic_distribution": [{ "mic": 0.015, "probability": 1.0 }],
+      "syphilis_mic_distribution": [{ "mic": 0.015, "probability": 1.0 }]
+    },
+    "West": {
+      "gonorrhea_mic_distribution": [
+        { "mic": 0.015, "probability": 0.7 },
+        { "mic": 0.03, "probability": 0.2 },
+        { "mic": 0.125, "probability": 0.08 },
+        { "mic": 0.5, "probability": 0.02 }
+      ],
+      "chlamydia_mic_distribution": [{ "mic": 0.015, "probability": 1.0 }],
+      "syphilis_mic_distribution": [{ "mic": 0.015, "probability": 1.0 }]
+    },
+    "South": {
+      "gonorrhea_mic_distribution": [
+        { "mic": 0.015, "probability": 0.8 },
+        { "mic": 0.03, "probability": 0.12 },
+        { "mic": 0.125, "probability": 0.06 },
+        { "mic": 0.5, "probability": 0.02 }
+      ],
+      "chlamydia_mic_distribution": [{ "mic": 0.015, "probability": 1.0 }],
+      "syphilis_mic_distribution": [{ "mic": 0.015, "probability": 1.0 }]
+    },
+    "Midwest": {
+      "gonorrhea_mic_distribution": [
+        { "mic": 0.015, "probability": 0.82 },
+        { "mic": 0.03, "probability": 0.11 },
+        { "mic": 0.125, "probability": 0.05 },
+        { "mic": 0.5, "probability": 0.02 }
+      ],
+      "chlamydia_mic_distribution": [{ "mic": 0.015, "probability": 1.0 }],
+      "syphilis_mic_distribution": [{ "mic": 0.015, "probability": 1.0 }]
+    }
+  },
+  "state_routing_map": {
+    "AL": "South",
+    "AK": "West",
+    "AZ": "West",
+    "AR": "South",
+    "CA": "West",
+    "CO": "West",
+    "CT": "Northeast",
+    "DE": "South",
+    "FL": "South",
+    "GA": "South",
+    "HI": "West",
+    "ID": "West",
+    "IL": "Midwest",
+    "IN": "Midwest",
+    "IA": "Midwest",
+    "KS": "Midwest",
+    "KY": "South",
+    "LA": "South",
+    "ME": "Northeast",
+    "MD": "South",
+    "MA": "Northeast",
+    "MI": "Midwest",
+    "MN": "Midwest",
+    "MS": "South",
+    "MO": "Midwest",
+    "MT": "West",
+    "NE": "Midwest",
+    "NV": "West",
+    "NH": "Northeast",
+    "NJ": "Northeast",
+    "NM": "West",
+    "NY": "Northeast",
+    "NC": "South",
+    "ND": "Midwest",
+    "OH": "Midwest",
+    "OK": "South",
+    "OR": "West",
+    "PA": "Northeast",
+    "RI": "Northeast",
+    "SC": "South",
+    "SD": "Midwest",
+    "TN": "South",
+    "TX": "South",
+    "UT": "West",
+    "VT": "Northeast",
+    "VA": "South",
+    "WA": "West",
+    "WV": "South",
+    "WI": "Midwest",
+    "WY": "West"
+  }
+}
