@@ -14,7 +14,11 @@ export interface AdherencePatient {
   age: number;
   literacyLevel: LiteracyLevel;
   priorNonAdherence: boolean;
-  stateBaselineRisk: number;
+  /**
+   * CDC/ATSDR Social Vulnerability Index — overall percentile for the patient’s
+   * area (tract or county, 0–100). Higher = more vulnerable; see ATSDR SVI docs.
+   */
+  sviOverallPercentile: number;
   sdoh: PatientSdoh;
 }
 
@@ -28,6 +32,15 @@ export interface AdherenceRiskResult {
   totalScore: number;
   riskTier: AdherenceRiskTier;
   activeInterventions: string[];
+}
+
+/**
+ * Maps overall SVI percentile (0–100) to points added to the adherence risk score (0–5).
+ * Linear scale: higher community vulnerability → higher support tier pressure.
+ */
+export function adherencePointsFromSviPercentile(percentile: number): number {
+  const p = Math.max(0, Math.min(100, percentile));
+  return Math.round((p / 100) * 5);
 }
 
 /** Estimates probability of finishing treatment from regimen complexity, demographics, and SDOH flags. */
@@ -45,7 +58,22 @@ export function calculateAdherenceRiskScore(
   if (patient.age < 25) score += 2;
   if (patient.literacyLevel === "Low") score += 2;
   if (patient.priorNonAdherence) score += 3;
-  if (patient.stateBaselineRisk) score += patient.stateBaselineRisk;
+
+  const sviPoints = adherencePointsFromSviPercentile(
+    patient.sviOverallPercentile,
+  );
+  if (sviPoints > 0) {
+    score += sviPoints;
+    if (sviPoints >= 3) {
+      interventions.push(
+        "CDC SVI (area): Higher tract/county social vulnerability — align adherence plan with SVI themes (socioeconomic, disability, minority/language, housing/transport) and stronger navigation.",
+      );
+    } else if (sviPoints >= 1) {
+      interventions.push(
+        "CDC SVI (area): Moderate community vulnerability percentile — confirm local resources and simplify access where possible.",
+      );
+    }
+  }
 
   if (patient.sdoh.medicationCost) {
     score += 2;

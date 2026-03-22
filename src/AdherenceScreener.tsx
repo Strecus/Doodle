@@ -1,6 +1,7 @@
 import { ClipboardList } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
+  adherencePointsFromSviPercentile,
   calculateAdherenceRiskScore,
   type AdherencePatient,
   type AdherenceRegimen,
@@ -54,7 +55,8 @@ export function AdherenceScreener() {
   const [age, setAge] = useState(28);
   const [literacyLevel, setLiteracyLevel] = useState<LiteracyLevel>("Medium");
   const [priorNonAdherence, setPriorNonAdherence] = useState(false);
-  const [stateBaselineRisk, setStateBaselineRisk] = useState(0);
+  /** CDC/ATSDR overall SVI percentile (0–100) for patient’s tract or county. */
+  const [sviOverallPercentile, setSviOverallPercentile] = useState(35);
 
   const [isMultiDay, setIsMultiDay] = useState(false);
   const [isBID, setIsBID] = useState(false);
@@ -71,7 +73,7 @@ export function AdherenceScreener() {
       age,
       literacyLevel,
       priorNonAdherence,
-      stateBaselineRisk,
+      sviOverallPercentile,
       sdoh: {
         medicationCost: sdohCost,
         transportation: sdohTransport,
@@ -84,7 +86,7 @@ export function AdherenceScreener() {
       age,
       literacyLevel,
       priorNonAdherence,
-      stateBaselineRisk,
+      sviOverallPercentile,
       sdohCost,
       sdohTransport,
       sdohHousing,
@@ -108,6 +110,9 @@ export function AdherenceScreener() {
   );
 
   const tier = tierStyles[result.riskTier] ?? tierStyles.LOW;
+  const sviAdherencePoints = adherencePointsFromSviPercentile(
+    sviOverallPercentile,
+  );
 
   return (
     <div className="space-y-8">
@@ -116,7 +121,17 @@ export function AdherenceScreener() {
         <AlertTitle>How to use this form</AlertTitle>
         <AlertDescription>
           This checklist helps estimate how hard it may be to stick with your
-          treatment plan. It is for education only — not a medical diagnosis.
+          treatment plan. Community-level{" "}
+          <a
+            href="https://www.atsdr.cdc.gov/placeandhealth/svi/index.html"
+            className="font-medium text-foreground underline underline-offset-2"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            CDC/ATSDR Social Vulnerability Index (SVI)
+          </a>{" "}
+          is included because higher area vulnerability often correlates with
+          barriers to care and adherence. For education only — not a diagnosis.
           Share results with your care team.
         </AlertDescription>
       </Alert>
@@ -126,7 +141,8 @@ export function AdherenceScreener() {
           <CardHeader>
             <CardTitle className="text-base">About you</CardTitle>
             <CardDescription>
-              Demographics and history used for the adherence score.
+              Demographics, history, and area SVI (CDC) feed the adherence
+              support level.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -185,21 +201,38 @@ export function AdherenceScreener() {
             </div>
 
             <div className="space-y-3">
-              <Label htmlFor="adh-state-risk">
-                Area baseline support (0 = none; higher = more barriers in your
-                region)
+              <Label htmlFor="adh-svi">
+                Area SVI — overall percentile (CDC/ATSDR)
               </Label>
+              <p className="text-xs text-muted-foreground">
+                Use the overall SVI percentile for the patient’s{" "}
+                <span className="font-medium text-foreground/90">
+                  census tract or county
+                </span>{" "}
+                from ATSDR tools.{" "}
+                <span className="font-medium">0</span> = least vulnerable,{" "}
+                <span className="font-medium">100</span> = most vulnerable. This
+                raises adherence support when community stressors are more
+                common.
+              </p>
               <Slider
-                id="adh-state-risk"
+                id="adh-svi"
                 min={0}
-                max={5}
+                max={100}
                 step={1}
-                value={[stateBaselineRisk]}
-                onValueChange={(v) => setStateBaselineRisk(v[0] ?? 0)}
+                value={[sviOverallPercentile]}
+                onValueChange={(v) => setSviOverallPercentile(v[0] ?? 0)}
               />
               <p className="text-xs text-muted-foreground">
-                Value: {stateBaselineRisk} (optional; from regional data when
-                available)
+                SVI percentile:{" "}
+                <span className="font-medium tabular-nums text-foreground">
+                  {sviOverallPercentile}
+                </span>
+                {" → "}
+                <span className="font-medium tabular-nums text-foreground">
+                  +{sviAdherencePoints}
+                </span>{" "}
+                adherence score points (scaled 0–5).
               </p>
             </div>
           </CardContent>
@@ -323,7 +356,7 @@ export function AdherenceScreener() {
             <div
               className={cn("h-full rounded-full transition-all", tier.bar)}
               style={{
-                width: `${Math.min(100, (result.totalScore / 16) * 100)}%`,
+                width: `${Math.min(100, (result.totalScore / 24) * 100)}%`,
               }}
             />
           </div>
