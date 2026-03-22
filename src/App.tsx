@@ -1,6 +1,7 @@
 import {
   AlertCircle,
   AlertTriangle,
+  BookOpen,
   Calendar,
   ClipboardList,
   FileText,
@@ -9,7 +10,7 @@ import {
   Pill,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useMemo, useState } from "react";
 import { AdherenceScreener } from "./AdherenceScreener";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -46,16 +47,20 @@ import {
   calculateMIC90,
   getGonorrheaMicDistribution,
   getRegionForState,
-  resolveStateFromZipDemo,
-  DEMO_ZIP_LOOKUP_COUNT,
-  normalizeZip5,
   surveillanceMetadata,
   type UsStateCode,
 } from "./mic90";
 import {
-  isOpenApiGeocodeConfigured,
-  resolveStateFromZipOpenApi,
-} from "./zipGeocodeOpenApi";
+  compareGyrSampleToRef,
+  parseGyrAPocTxt,
+} from "./gyrAUpload";
+import {
+  type HealthLiteracyLevel,
+  type PreferredLanguageId,
+  languageCounselingPoints,
+  literacyCounselingPoints,
+  preferredLanguageDisplayName,
+} from "./patientEducationCopy";
 
 /** Renders P_G,base^XR (PGx base activity factor). */
 function NotationPGbaseXR({ className }: { className?: string }) {
@@ -72,6 +77,122 @@ type View = "intake" | "output";
 
 type Allergy = "none" | "low" | "high";
 type GyrA = "not-tested" | "wild" | "mutant";
+
+type GyrAUploadSummary = { mismatches: number; mutant: boolean };
+
+function GyrAPocSection({
+  fieldIdPrefix,
+  gyrAPocCompleted,
+  onGyrAPocCompleted,
+  gyrA,
+  onGyrA,
+  fileInputKey,
+  onFileChange,
+  uploadError,
+  uploadSummary,
+}: {
+  fieldIdPrefix: string;
+  gyrAPocCompleted: boolean;
+  onGyrAPocCompleted: (v: boolean) => void;
+  gyrA: GyrA;
+  onGyrA: (v: GyrA) => void;
+  fileInputKey: number;
+  onFileChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  uploadError: string | null;
+  uploadSummary: GyrAUploadSummary | null;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3 rounded-md border bg-muted/30 p-3">
+        <Checkbox
+          id={`${fieldIdPrefix}-poc-done`}
+          checked={gyrAPocCompleted}
+          onCheckedChange={(c) => onGyrAPocCompleted(c === true)}
+          className="mt-0.5"
+        />
+        <div className="space-y-1">
+          <Label
+            htmlFor={`${fieldIdPrefix}-poc-done`}
+            className="cursor-pointer font-medium leading-snug"
+          >
+            POC gyrA test completed — I have a result file to compare
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Uncheck to skip the file and enter wild-type / mutant / not tested
+            manually.
+          </p>
+        </div>
+      </div>
+
+      {gyrAPocCompleted ? (
+        <div className="space-y-3 rounded-md border p-3">
+          <div className="space-y-1">
+            <Label htmlFor={`${fieldIdPrefix}-file`}>POC text file</Label>
+            <p className="text-xs text-muted-foreground">
+              One row per position 1–500:{" "}
+              <span className="font-mono text-foreground/80">pos</span>, tab or
+              space, then{" "}
+              <span className="font-mono text-foreground/80">A|T|G|C</span>.
+              Extra columns are ignored.
+            </p>
+          </div>
+          <Input
+            key={fileInputKey}
+            id={`${fieldIdPrefix}-file`}
+            type="file"
+            accept=".txt,text/plain"
+            onChange={onFileChange}
+            className="cursor-pointer"
+          />
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <a
+              className="text-primary underline"
+              href="/gyrA-examples/poc_matches_ref.txt"
+              download
+            >
+              Example — matches ref (no SNPs)
+            </a>
+            <a
+              className="text-primary underline"
+              href="/gyrA-examples/poc_variant_resistant.txt"
+              download
+            >
+              Example — 10 SNPs vs ref (variant)
+            </a>
+          </div>
+          {uploadError ? (
+            <p className="text-sm text-destructive">{uploadError}</p>
+          ) : null}
+          {uploadSummary ? (
+            <p className="text-sm text-muted-foreground">
+              {uploadSummary.mismatches === 0
+                ? "Same as in-app reference across 500 positions — wild-type for this window."
+                : `${uploadSummary.mismatches} SNP(s) vs reference — variant; primary line switches to dual therapy (demo).`}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Upload a .txt to compare to the built-in reference.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor={`${fieldIdPrefix}-manual`}>POC gyrA (manual)</Label>
+          <Select value={gyrA} onValueChange={(v) => onGyrA(v as GyrA)}>
+            <SelectTrigger id={`${fieldIdPrefix}-manual`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="not-tested">Not tested</SelectItem>
+              <SelectItem value="wild">Wild-type</SelectItem>
+              <SelectItem value="mutant">Mutant</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ClearanceFormulaPanel({
   weightKg,
@@ -153,68 +274,22 @@ export default function App() {
   const [allergy, setAllergy] = useState<Allergy>("none");
   const [pgx, setPgx] = useState<PgxProfileId>("normal");
   const [gyrA, setGyrA] = useState<GyrA>("not-tested");
-  const [zipInput, setZipInput] = useState("");
-  const [residenceState, setResidenceState] = useState<UsStateCode>("NY");
-  const [zipApiState, setZipApiState] = useState<UsStateCode | null>(null);
-  const [zipApiLoading, setZipApiLoading] = useState(false);
-  const [zipApiErr, setZipApiErr] = useState<string | null>(null);
+  const [gyrAPocCompleted, setGyrAPocCompleted] = useState(false);
+  const [gyrAUploadError, setGyrAUploadError] = useState<string | null>(null);
+  const [gyrAUploadSummary, setGyrAUploadSummary] =
+    useState<GyrAUploadSummary | null>(null);
+  const [gyrAFileKey, setGyrAFileKey] = useState(0);
+  /** US state for gonorrhea regional MIC routing (no ZIP in this UI). */
+  const [pocMicState, setPocMicState] = useState<UsStateCode>("NY");
 
   const [dxGono, setDxGono] = useState(false);
   const [dxChlam, setDxChlam] = useState(false);
   const [dxSyph, setDxSyph] = useState(false);
   const [dxTrich, setDxTrich] = useState(false);
 
-  const stateFromZipDemo = useMemo(
-    () => resolveStateFromZipDemo(zipInput),
-    [zipInput],
-  );
-
-  useEffect(() => {
-    if (!dxGono) {
-      setZipApiState(null);
-      setZipApiErr(null);
-      setZipApiLoading(false);
-      return;
-    }
-    const z = normalizeZip5(zipInput);
-    if (!z || !isOpenApiGeocodeConfigured()) {
-      setZipApiState(null);
-      setZipApiErr(null);
-      setZipApiLoading(false);
-      return;
-    }
-    let cancelled = false;
-    const handle = window.setTimeout(() => {
-      setZipApiLoading(true);
-      setZipApiErr(null);
-      resolveStateFromZipOpenApi(z)
-        .then((st) => {
-          if (cancelled) return;
-          setZipApiState(st);
-          setZipApiErr(
-            st ? null : "Geocoder returned no US state — check response shape.",
-          );
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setZipApiState(null);
-          setZipApiErr("Geocoder request failed (CORS, 401, or network).");
-        })
-        .finally(() => {
-          if (!cancelled) setZipApiLoading(false);
-        });
-    }, 400);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(handle);
-    };
-  }, [zipInput, dxGono]);
-
-  const effectiveState =
-    zipApiState ?? stateFromZipDemo ?? residenceState;
   const surveillanceRegion = useMemo(
-    () => (dxGono ? getRegionForState(effectiveState) : null),
-    [dxGono, effectiveState],
+    () => (dxGono ? getRegionForState(pocMicState) : null),
+    [dxGono, pocMicState],
   );
   const gonorrheaMic90 = useMemo(() => {
     if (!dxGono || !surveillanceRegion) return null;
@@ -231,22 +306,87 @@ export default function App() {
   const [sdohHousing, setSdohHousing] = useState(false);
   const [sdohFood, setSdohFood] = useState(false);
 
+  const [healthLiteracy, setHealthLiteracy] =
+    useState<HealthLiteracyLevel>("adequate");
+  const [preferredLanguage, setPreferredLanguage] =
+    useState<PreferredLanguageId>("english");
+  const [languageOtherSpecify, setLanguageOtherSpecify] = useState("");
+
   const pgxMeta = getPgxProfileMeta(pgx);
   const pgBaseXr = pgxMeta.pgBaseXr;
+
+  const effectiveGyrA = useMemo((): GyrA => {
+    if (gyrAPocCompleted) {
+      if (gyrAUploadSummary) {
+        return gyrAUploadSummary.mutant ? "mutant" : "wild";
+      }
+      return "not-tested";
+    }
+    return gyrA;
+  }, [gyrAPocCompleted, gyrAUploadSummary, gyrA]);
 
   const ceftriaxoneCindividualLh = useMemo(() => {
     const rows = clearanceRowsForPatient(weightKg, pgBaseXr);
     return rows[0]?.cindividualLh ?? 0;
   }, [weightKg, pgBaseXr]);
 
+  const literacyEducationBullets = useMemo(
+    () => literacyCounselingPoints(healthLiteracy),
+    [healthLiteracy],
+  );
+  const languageEducationBullets = useMemo(
+    () => languageCounselingPoints(preferredLanguage, languageOtherSpecify),
+    [preferredLanguage, languageOtherSpecify],
+  );
+
   const hardStop = allergy === "high" && dxGono;
   const mainLine = hardStop
     ? "Consult Infectious Diseases — no automated pathway"
-    : "✅ Ceftriaxone 500mg IM × 1 dose";
+    : effectiveGyrA === "mutant"
+      ? "Ceftriaxone 1 g IM ×1 plus azithromycin 1 g PO ×1 — POC vs ref shows variant(s); do not use fluoroquinolone monotherapy (demo pathway)."
+      : "✅ Ceftriaxone 500mg IM × 1 dose";
+
+  function onGyrAPocCompletedChange(v: boolean) {
+    setGyrAPocCompleted(v);
+    if (!v) {
+      setGyrAUploadError(null);
+      setGyrAUploadSummary(null);
+      setGyrAFileKey((k) => k + 1);
+    }
+  }
+
+  function onGyrAFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setGyrAUploadError(null);
+    setGyrAUploadSummary(null);
+    void file
+      .text()
+      .then((text) => {
+        const parsed = parseGyrAPocTxt(text);
+        if (!parsed.ok) {
+          setGyrAUploadError(parsed.error);
+          return;
+        }
+        const { mismatchCount } = compareGyrSampleToRef(parsed.bases);
+        setGyrAUploadSummary({
+          mismatches: mismatchCount,
+          mutant: mismatchCount > 0,
+        });
+      })
+      .catch(() => setGyrAUploadError("Could not read file."));
+  }
 
   function reset() {
     setView("intake");
     setLoading(false);
+    setGyrAPocCompleted(false);
+    setGyrAUploadError(null);
+    setGyrAUploadSummary(null);
+    setGyrAFileKey((k) => k + 1);
+    setHealthLiteracy("adequate");
+    setPreferredLanguage("english");
+    setLanguageOtherSpecify("");
   }
 
   function generate() {
@@ -455,102 +595,33 @@ export default function App() {
                         Shown when <span className="font-medium">Gonorrhea</span>{" "}
                         is selected. {surveillanceMetadata().source}. MIC
                         <sub>90</sub> is the lowest MIC bin whose cumulative
-                        regional probability reaches ≥90%. Routing priority:{" "}
-                        {isOpenApiGeocodeConfigured() ? (
-                          <>
-                            5-digit ZIP → your OpenAPI geocoder (
-                            <code className="rounded bg-muted px-1">
-                              VITE_GEOCODE_ZIP_URL
-                            </code>
-                            ), then
-                          </>
-                        ) : null}{" "}
-                        demo ZIP table ({DEMO_ZIP_LOOKUP_COUNT} sample ZIPs),
-                        then manual state.
+                        regional probability reaches ≥90%. Choose the patient’s{" "}
+                        <span className="font-medium">state of care / residence</span>{" "}
+                        to map into the regional MIC archetype (no ZIP entry in
+                        this screen).
                       </p>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="zip-residence">ZIP code</Label>
-                          <Input
-                            id="zip-residence"
-                            inputMode="numeric"
-                            autoComplete="postal-code"
-                            placeholder="e.g. 10001"
-                            maxLength={10}
-                            value={zipInput}
-                            onChange={(e) => setZipInput(e.target.value)}
-                          />
-                          {zipApiLoading &&
-                          normalizeZip5(zipInput) &&
-                          isOpenApiGeocodeConfigured() ? (
-                            <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <Loader2
-                                className="size-3.5 shrink-0 animate-spin"
-                                aria-hidden
-                              />
-                              OpenAPI ZIP lookup…
-                            </p>
-                          ) : null}
-                          {zipApiState && isOpenApiGeocodeConfigured() ? (
-                            <p className="text-xs text-muted-foreground">
-                              OpenAPI: ZIP →{" "}
-                              <span className="font-medium text-foreground">
-                                {zipApiState}
-                              </span>
-                            </p>
-                          ) : null}
-                          {zipApiErr &&
-                          normalizeZip5(zipInput) &&
-                          isOpenApiGeocodeConfigured() &&
-                          !zipApiLoading &&
-                          !zipApiState ? (
-                            <p className="text-xs text-amber-800 dark:text-amber-200">
-                              {zipApiErr}
-                            </p>
-                          ) : null}
-                          {!zipApiState && stateFromZipDemo ? (
-                            <p className="text-xs text-muted-foreground">
-                              Demo table: ZIP →{" "}
-                              <span className="font-medium text-foreground">
-                                {stateFromZipDemo}
-                              </span>
-                            </p>
-                          ) : null}
-                          {!zipApiState &&
-                          !stateFromZipDemo &&
-                          normalizeZip5(zipInput) &&
-                          !zipApiLoading ? (
-                            <p className="text-xs text-amber-800 dark:text-amber-200">
-                              ZIP not resolved — using manual state below.
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="state-residence">
-                            State of residence (fallback)
-                          </Label>
-                          <Select
-                            value={residenceState}
-                            onValueChange={(v) =>
-                              setResidenceState(v as UsStateCode)
-                            }
-                          >
-                            <SelectTrigger
-                              id="state-residence"
-                              className="w-full"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-60">
-                              {US_STATE_CODES.map((code) => (
-                                <SelectItem key={code} value={code}>
-                                  {code}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="poc-mic-state">
+                          State for regional MIC routing
+                        </Label>
+                        <Select
+                          value={pocMicState}
+                          onValueChange={(v) =>
+                            setPocMicState(v as UsStateCode)
+                          }
+                        >
+                          <SelectTrigger id="poc-mic-state" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-60">
+                            {US_STATE_CODES.map((code) => (
+                              <SelectItem key={code} value={code}>
+                                {code}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
 
                       {gonorrheaMic90 != null && surveillanceRegion ? (
@@ -566,38 +637,23 @@ export default function App() {
                             <span className="font-medium">
                               {surveillanceRegion}
                             </span>{" "}
-                            via state{" "}
-                            <span className="font-medium">
-                              {effectiveState}
-                            </span>
-                            {zipApiState
-                              ? " (ZIP → OpenAPI)"
-                              : stateFromZipDemo
-                                ? " (ZIP → demo table)"
-                                : " (manual state)"}
-                            .
+                            from state{" "}
+                            <span className="font-medium">{pocMicState}</span>.
                           </p>
                         </div>
                       ) : null}
 
-                      <div className="space-y-2">
-                        <Label htmlFor="gyra">POC gyrA test</Label>
-                        <Select
-                          value={gyrA}
-                          onValueChange={(v) => setGyrA(v as GyrA)}
-                        >
-                          <SelectTrigger id="gyra" className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="not-tested">
-                              Not tested
-                            </SelectItem>
-                            <SelectItem value="wild">Wild-type</SelectItem>
-                            <SelectItem value="mutant">Mutant</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      <GyrAPocSection
+                        fieldIdPrefix="gono"
+                        gyrAPocCompleted={gyrAPocCompleted}
+                        onGyrAPocCompleted={onGyrAPocCompletedChange}
+                        gyrA={gyrA}
+                        onGyrA={setGyrA}
+                        fileInputKey={gyrAFileKey}
+                        onFileChange={onGyrAFileChange}
+                        uploadError={gyrAUploadError}
+                        uploadSummary={gyrAUploadSummary}
+                      />
                     </fieldset>
                   ) : (
                     <fieldset className="space-y-3 rounded-lg border p-4">
@@ -609,24 +665,17 @@ export default function App() {
                         <span className="font-medium">Gonorrhea</span> is checked
                         under Confirmed diagnosis.
                       </p>
-                      <div className="space-y-2">
-                        <Label htmlFor="gyra-simple">POC gyrA test</Label>
-                        <Select
-                          value={gyrA}
-                          onValueChange={(v) => setGyrA(v as GyrA)}
-                        >
-                          <SelectTrigger id="gyra-simple" className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="not-tested">
-                              Not tested
-                            </SelectItem>
-                            <SelectItem value="wild">Wild-type</SelectItem>
-                            <SelectItem value="mutant">Mutant</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      <GyrAPocSection
+                        fieldIdPrefix="simple"
+                        gyrAPocCompleted={gyrAPocCompleted}
+                        onGyrAPocCompleted={onGyrAPocCompletedChange}
+                        gyrA={gyrA}
+                        onGyrA={setGyrA}
+                        fileInputKey={gyrAFileKey}
+                        onFileChange={onGyrAFileChange}
+                        uploadError={gyrAUploadError}
+                        uploadSummary={gyrAUploadSummary}
+                      />
                     </fieldset>
                   )}
                 </CardContent>
@@ -703,6 +752,80 @@ export default function App() {
               </div>
             </div>
 
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <BookOpen className="size-4 shrink-0" aria-hidden />
+                  Patient education
+                </CardTitle>
+                <CardDescription>
+                  Health literacy and preferred language shape how you explain
+                  the plan, choose handouts, and arrange interpretation.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="health-literacy">Health literacy level</Label>
+                  <Select
+                    value={healthLiteracy}
+                    onValueChange={(v) =>
+                      setHealthLiteracy(v as HealthLiteracyLevel)
+                    }
+                  >
+                    <SelectTrigger id="health-literacy" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="adequate">
+                        Adequate — routine materials
+                      </SelectItem>
+                      <SelectItem value="marginal">
+                        Marginal — simplify + teach-back
+                      </SelectItem>
+                      <SelectItem value="low">
+                        Low — minimal print, spoken + visual
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Estimate from conversation, teach-back, or a brief screen;
+                    used only to prompt counseling style here.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="preferred-language">Preferred language</Label>
+                  <Select
+                    value={preferredLanguage}
+                    onValueChange={(v) =>
+                      setPreferredLanguage(v as PreferredLanguageId)
+                    }
+                  >
+                    <SelectTrigger id="preferred-language" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="english">English</SelectItem>
+                      <SelectItem value="spanish">Spanish</SelectItem>
+                      <SelectItem value="mandarin">Mandarin Chinese</SelectItem>
+                      <SelectItem value="french">French</SelectItem>
+                      <SelectItem value="tagalog">Tagalog</SelectItem>
+                      <SelectItem value="vietnamese">Vietnamese</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {preferredLanguage === "other" ? (
+                    <Input
+                      id="language-other"
+                      value={languageOtherSpecify}
+                      onChange={(e) => setLanguageOtherSpecify(e.target.value)}
+                      placeholder="Specify language"
+                      aria-label="Specify preferred language"
+                    />
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
+
             <ClearanceFormulaPanel
               weightKg={weightKg}
               pgBaseXr={pgBaseXr}
@@ -746,6 +869,15 @@ export default function App() {
                 <CardDescription className="text-base text-foreground/80">
                   {hardStop ? (
                     "High-risk allergy with gonorrhea diagnosis requires ID-guided therapy."
+                  ) : effectiveGyrA === "mutant" ? (
+                    <>
+                      Uploaded POC differs from the built-in reference (gyrA
+                      window). This demo escalates to{" "}
+                      <span className="font-medium">ceftriaxone + azithromycin</span>{" "}
+                      and flags fluoroquinolone monotherapy as inappropriate for
+                      this signal. Confirm with culture, AST, and current CDC /
+                      local guidance.
+                    </>
                   ) : (
                     <>
                       Ceftriaxone C<sub>individual</sub> ≈{" "}
@@ -760,7 +892,7 @@ export default function App() {
                 </CardDescription>
               </CardHeader>
               {(pregnant ||
-                gyrA === "mutant" ||
+                effectiveGyrA === "mutant" ||
                 dxChlam ||
                 dxSyph ||
                 dxTrich) && (
@@ -769,7 +901,7 @@ export default function App() {
                     Context captured:{" "}
                     {[
                       pregnant && "pregnancy",
-                      gyrA === "mutant" && "gyrA mutant",
+                      effectiveGyrA === "mutant" && "gyrA variant (POC vs ref)",
                       dxChlam && "chlamydia",
                       dxSyph && "syphilis",
                       dxTrich && "trichomoniasis",
@@ -845,6 +977,56 @@ export default function App() {
                   </Button>
                 ))}
               </div>
+            </section>
+
+            <Separator />
+
+            <section className="space-y-4">
+              <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                <BookOpen className="size-4" aria-hidden />
+                Patient education (conclusion)
+              </h2>
+              <Card className="border-primary/20 bg-muted/30">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">
+                    Counseling &amp; materials checklist
+                  </CardTitle>
+                  <CardDescription>
+                    Based on the literacy and language selections from intake.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-6 sm:grid-cols-2">
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-foreground">
+                      Preferred language:{" "}
+                      <span className="font-semibold">
+                        {preferredLanguageDisplayName(
+                          preferredLanguage,
+                          languageOtherSpecify,
+                        )}
+                      </span>
+                    </p>
+                    <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+                      {languageEducationBullets.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-foreground">
+                      Health literacy:{" "}
+                      <span className="font-semibold capitalize">
+                        {healthLiteracy}
+                      </span>
+                    </p>
+                    <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+                      {literacyEducationBullets.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
             </section>
           </div>
         )}
