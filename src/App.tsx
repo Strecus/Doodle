@@ -159,12 +159,23 @@ export default function App() {
   const [zipApiLoading, setZipApiLoading] = useState(false);
   const [zipApiErr, setZipApiErr] = useState<string | null>(null);
 
+  const [dxGono, setDxGono] = useState(false);
+  const [dxChlam, setDxChlam] = useState(false);
+  const [dxSyph, setDxSyph] = useState(false);
+  const [dxTrich, setDxTrich] = useState(false);
+
   const stateFromZipDemo = useMemo(
     () => resolveStateFromZipDemo(zipInput),
     [zipInput],
   );
 
   useEffect(() => {
+    if (!dxGono) {
+      setZipApiState(null);
+      setZipApiErr(null);
+      setZipApiLoading(false);
+      return;
+    }
     const z = normalizeZip5(zipInput);
     if (!z || !isOpenApiGeocodeConfigured()) {
       setZipApiState(null);
@@ -197,22 +208,18 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [zipInput]);
+  }, [zipInput, dxGono]);
 
   const effectiveState =
     zipApiState ?? stateFromZipDemo ?? residenceState;
   const surveillanceRegion = useMemo(
-    () => getRegionForState(effectiveState),
-    [effectiveState],
+    () => (dxGono ? getRegionForState(effectiveState) : null),
+    [dxGono, effectiveState],
   );
   const gonorrheaMic90 = useMemo(() => {
-    if (!surveillanceRegion) return null;
+    if (!dxGono || !surveillanceRegion) return null;
     return calculateMIC90(getGonorrheaMicDistribution(surveillanceRegion));
-  }, [surveillanceRegion]);
-  const [dxGono, setDxGono] = useState(false);
-  const [dxChlam, setDxChlam] = useState(false);
-  const [dxSyph, setDxSyph] = useState(false);
-  const [dxTrich, setDxTrich] = useState(false);
+  }, [dxGono, surveillanceRegion]);
 
   const [icu, setIcu] = useState(false);
   const [liver, setLiver] = useState(false);
@@ -439,145 +446,189 @@ export default function App() {
                     </div>
                   </fieldset>
 
-                  <fieldset className="space-y-4 rounded-lg border p-4">
-                    <legend className="px-1 text-sm font-medium">
-                      POC gyrA test &amp; regional MIC context
-                    </legend>
-                    <p className="text-xs text-muted-foreground">
-                      {surveillanceMetadata().source}. MIC<sub>90</sub> is the
-                      lowest MIC bin whose cumulative regional probability reaches
-                      ≥90%. Routing priority:{" "}
-                      {isOpenApiGeocodeConfigured() ? (
-                        <>
-                          5-digit ZIP → your OpenAPI geocoder (
-                          <code className="rounded bg-muted px-1">VITE_GEOCODE_ZIP_URL</code>
-                          ), then
-                        </>
-                      ) : null}{" "}
-                      demo ZIP table ({DEMO_ZIP_LOOKUP_COUNT} sample ZIPs), then
-                      manual state.
-                    </p>
+                  {dxGono ? (
+                    <fieldset className="space-y-4 rounded-lg border p-4">
+                      <legend className="px-1 text-sm font-medium">
+                        POC gyrA test &amp; regional MIC context
+                      </legend>
+                      <p className="text-xs text-muted-foreground">
+                        Shown when <span className="font-medium">Gonorrhea</span>{" "}
+                        is selected. {surveillanceMetadata().source}. MIC
+                        <sub>90</sub> is the lowest MIC bin whose cumulative
+                        regional probability reaches ≥90%. Routing priority:{" "}
+                        {isOpenApiGeocodeConfigured() ? (
+                          <>
+                            5-digit ZIP → your OpenAPI geocoder (
+                            <code className="rounded bg-muted px-1">
+                              VITE_GEOCODE_ZIP_URL
+                            </code>
+                            ), then
+                          </>
+                        ) : null}{" "}
+                        demo ZIP table ({DEMO_ZIP_LOOKUP_COUNT} sample ZIPs),
+                        then manual state.
+                      </p>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="zip-residence">ZIP code</Label>
-                        <Input
-                          id="zip-residence"
-                          inputMode="numeric"
-                          autoComplete="postal-code"
-                          placeholder="e.g. 10001"
-                          maxLength={10}
-                          value={zipInput}
-                          onChange={(e) => setZipInput(e.target.value)}
-                        />
-                        {zipApiLoading &&
-                        normalizeZip5(zipInput) &&
-                        isOpenApiGeocodeConfigured() ? (
-                          <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Loader2
-                              className="size-3.5 shrink-0 animate-spin"
-                              aria-hidden
-                            />
-                            OpenAPI ZIP lookup…
-                          </p>
-                        ) : null}
-                        {zipApiState && isOpenApiGeocodeConfigured() ? (
-                          <p className="text-xs text-muted-foreground">
-                            OpenAPI: ZIP →{" "}
-                            <span className="font-medium text-foreground">
-                              {zipApiState}
-                            </span>
-                          </p>
-                        ) : null}
-                        {zipApiErr &&
-                        normalizeZip5(zipInput) &&
-                        isOpenApiGeocodeConfigured() &&
-                        !zipApiLoading &&
-                        !zipApiState ? (
-                          <p className="text-xs text-amber-800 dark:text-amber-200">
-                            {zipApiErr}
-                          </p>
-                        ) : null}
-                        {!zipApiState && stateFromZipDemo ? (
-                          <p className="text-xs text-muted-foreground">
-                            Demo table: ZIP →{" "}
-                            <span className="font-medium text-foreground">
-                              {stateFromZipDemo}
-                            </span>
-                          </p>
-                        ) : null}
-                        {!zipApiState &&
-                        !stateFromZipDemo &&
-                        normalizeZip5(zipInput) &&
-                        !zipApiLoading ? (
-                          <p className="text-xs text-amber-800 dark:text-amber-200">
-                            ZIP not resolved — using manual state below.
-                          </p>
-                        ) : null}
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="zip-residence">ZIP code</Label>
+                          <Input
+                            id="zip-residence"
+                            inputMode="numeric"
+                            autoComplete="postal-code"
+                            placeholder="e.g. 10001"
+                            maxLength={10}
+                            value={zipInput}
+                            onChange={(e) => setZipInput(e.target.value)}
+                          />
+                          {zipApiLoading &&
+                          normalizeZip5(zipInput) &&
+                          isOpenApiGeocodeConfigured() ? (
+                            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Loader2
+                                className="size-3.5 shrink-0 animate-spin"
+                                aria-hidden
+                              />
+                              OpenAPI ZIP lookup…
+                            </p>
+                          ) : null}
+                          {zipApiState && isOpenApiGeocodeConfigured() ? (
+                            <p className="text-xs text-muted-foreground">
+                              OpenAPI: ZIP →{" "}
+                              <span className="font-medium text-foreground">
+                                {zipApiState}
+                              </span>
+                            </p>
+                          ) : null}
+                          {zipApiErr &&
+                          normalizeZip5(zipInput) &&
+                          isOpenApiGeocodeConfigured() &&
+                          !zipApiLoading &&
+                          !zipApiState ? (
+                            <p className="text-xs text-amber-800 dark:text-amber-200">
+                              {zipApiErr}
+                            </p>
+                          ) : null}
+                          {!zipApiState && stateFromZipDemo ? (
+                            <p className="text-xs text-muted-foreground">
+                              Demo table: ZIP →{" "}
+                              <span className="font-medium text-foreground">
+                                {stateFromZipDemo}
+                              </span>
+                            </p>
+                          ) : null}
+                          {!zipApiState &&
+                          !stateFromZipDemo &&
+                          normalizeZip5(zipInput) &&
+                          !zipApiLoading ? (
+                            <p className="text-xs text-amber-800 dark:text-amber-200">
+                              ZIP not resolved — using manual state below.
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="state-residence">
+                            State of residence (fallback)
+                          </Label>
+                          <Select
+                            value={residenceState}
+                            onValueChange={(v) =>
+                              setResidenceState(v as UsStateCode)
+                            }
+                          >
+                            <SelectTrigger
+                              id="state-residence"
+                              className="w-full"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60">
+                              {US_STATE_CODES.map((code) => (
+                                <SelectItem key={code} value={code}>
+                                  {code}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
+
+                      {gonorrheaMic90 != null && surveillanceRegion ? (
+                        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                          <p className="font-medium">
+                            Gonorrhea MIC<sub>90</sub> (ceftriaxone surrogate):{" "}
+                            <span className="tabular-nums">
+                              {gonorrheaMic90} µg/mL
+                            </span>
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Region{" "}
+                            <span className="font-medium">
+                              {surveillanceRegion}
+                            </span>{" "}
+                            via state{" "}
+                            <span className="font-medium">
+                              {effectiveState}
+                            </span>
+                            {zipApiState
+                              ? " (ZIP → OpenAPI)"
+                              : stateFromZipDemo
+                                ? " (ZIP → demo table)"
+                                : " (manual state)"}
+                            .
+                          </p>
+                        </div>
+                      ) : null}
+
                       <div className="space-y-2">
-                        <Label htmlFor="state-residence">
-                          State of residence (fallback)
-                        </Label>
+                        <Label htmlFor="gyra">POC gyrA test</Label>
                         <Select
-                          value={residenceState}
-                          onValueChange={(v) =>
-                            setResidenceState(v as UsStateCode)
-                          }
+                          value={gyrA}
+                          onValueChange={(v) => setGyrA(v as GyrA)}
                         >
-                          <SelectTrigger id="state-residence" className="w-full">
+                          <SelectTrigger id="gyra" className="w-full">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent className="max-h-60">
-                            {US_STATE_CODES.map((code) => (
-                              <SelectItem key={code} value={code}>
-                                {code}
-                              </SelectItem>
-                            ))}
+                          <SelectContent>
+                            <SelectItem value="not-tested">
+                              Not tested
+                            </SelectItem>
+                            <SelectItem value="wild">Wild-type</SelectItem>
+                            <SelectItem value="mutant">Mutant</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-                    </div>
-
-                    {gonorrheaMic90 != null && surveillanceRegion ? (
-                      <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                        <p className="font-medium">
-                          Gonorrhea MIC<sub>90</sub> (ceftriaxone surrogate):{" "}
-                          <span className="tabular-nums">
-                            {gonorrheaMic90} µg/mL
-                          </span>
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Region <span className="font-medium">{surveillanceRegion}</span>{" "}
-                          via state{" "}
-                          <span className="font-medium">{effectiveState}</span>
-                          {zipApiState
-                            ? " (ZIP → OpenAPI)"
-                            : stateFromZipDemo
-                              ? " (ZIP → demo table)"
-                              : " (manual state)"}
-                          .
-                        </p>
+                    </fieldset>
+                  ) : (
+                    <fieldset className="space-y-3 rounded-lg border p-4">
+                      <legend className="px-1 text-sm font-medium">
+                        POC gyrA test
+                      </legend>
+                      <p className="text-xs text-muted-foreground">
+                        Regional MIC context appears when{" "}
+                        <span className="font-medium">Gonorrhea</span> is checked
+                        under Confirmed diagnosis.
+                      </p>
+                      <div className="space-y-2">
+                        <Label htmlFor="gyra-simple">POC gyrA test</Label>
+                        <Select
+                          value={gyrA}
+                          onValueChange={(v) => setGyrA(v as GyrA)}
+                        >
+                          <SelectTrigger id="gyra-simple" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="not-tested">
+                              Not tested
+                            </SelectItem>
+                            <SelectItem value="wild">Wild-type</SelectItem>
+                            <SelectItem value="mutant">Mutant</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                    ) : null}
-
-                    <div className="space-y-2">
-                      <Label htmlFor="gyra">POC gyrA test</Label>
-                      <Select
-                        value={gyrA}
-                        onValueChange={(v) => setGyrA(v as GyrA)}
-                      >
-                        <SelectTrigger id="gyra" className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="not-tested">Not tested</SelectItem>
-                          <SelectItem value="wild">Wild-type</SelectItem>
-                          <SelectItem value="mutant">Mutant</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </fieldset>
+                    </fieldset>
+                  )}
                 </CardContent>
               </Card>
 
