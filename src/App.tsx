@@ -10,7 +10,7 @@ import {
   Pill,
   Users,
 } from "lucide-react";
-import { type ChangeEvent, useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { AdherenceScreener } from "./AdherenceScreener";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -39,22 +39,12 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-<<<<<<< HEAD
-  CPOPULATION_LH,
-=======
+  DEFAULT_PGX_PROFILE_ID,
   PGX_PROFILE_IDS,
   type PgxProfileId,
->>>>>>> f320e1c (feat: ui update)
   clearanceRowsForPatient,
   getPgxProfileMeta,
 } from "./clearance";
-import {
-  DEFAULT_HOST_PGX_PERSONA_ID,
-  HOST_PGX_PERSONAS,
-  type HostPgxPersonaId,
-  getHostPgxPersona,
-  isHostPgxPersonaId,
-} from "./hostPgxPersonas";
 import {
   US_STATE_CODES,
   calculateMIC90,
@@ -314,7 +304,6 @@ function WizardStepButton({
   subtitle,
   active,
   completed,
-  disabled,
   onClick,
 }: {
   step: number;
@@ -322,13 +311,11 @@ function WizardStepButton({
   subtitle: string;
   active: boolean;
   completed: boolean;
-  disabled: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      disabled={disabled}
       onClick={onClick}
       className={cn(
         "flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-3 py-3 text-left transition",
@@ -337,7 +324,6 @@ function WizardStepButton({
           : completed
             ? "bg-muted/70 text-foreground hover:bg-muted"
             : "text-muted-foreground hover:bg-muted/50",
-        disabled && "cursor-default opacity-100",
       )}
     >
       <span
@@ -779,14 +765,7 @@ export default function App() {
   const [weightKg, setWeightKg] = useState(78);
   const [pregnant, setPregnant] = useState(false);
   const [allergy, setAllergy] = useState<Allergy>("none");
-  const [hostPgxPersonaId, setHostPgxPersonaId] = useState<HostPgxPersonaId>(
-    DEFAULT_HOST_PGX_PERSONA_ID,
-  );
-  const hostPersona = useMemo(
-    () => getHostPgxPersona(hostPgxPersonaId),
-    [hostPgxPersonaId],
-  );
-  const pgx = hostPersona.pgxProfile;
+  const [pgx, setPgx] = useState<PgxProfileId>(DEFAULT_PGX_PROFILE_ID);
   const [gyrA, setGyrA] = useState<GyrA>("not-tested");
   const [gyrAPocCompleted, setGyrAPocCompleted] = useState(false);
   const [gyrAUploadError, setGyrAUploadError] = useState<string | null>(null);
@@ -925,6 +904,15 @@ export default function App() {
     ],
   );
   const readyToGenerate = blockers.length === 0;
+  const blockerSummary =
+    blockers.length === 0
+      ? "All required items are captured."
+      : `${blockers.length} required item${blockers.length === 1 ? "" : "s"} missing.`;
+
+  useEffect(() => {
+    if (section !== "dosing") return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [section, step]);
 
   function markStepComplete(currentStep: WizardStep) {
     setCompletedSteps((prev) =>
@@ -975,10 +963,8 @@ export default function App() {
   }
 
   function selectStep(nextStep: WizardStep) {
-    if (nextStep <= step) {
-      setStepError(null);
-      setStep(nextStep);
-    }
+    setStepError(null);
+    setStep(nextStep);
   }
 
   function onGyrAPocCompletedChange(value: boolean) {
@@ -1062,13 +1048,7 @@ export default function App() {
       pregnant,
       weightKg,
       ceftriaxoneCindividualLh,
-      ceftriaxoneDoseLabel:
-        !recommendation.hardStop.active &&
-        dxGono &&
-        recommendation.primaryDrug.name === "Ceftriaxone"
-          ? recommendation.primaryDrug.dose
-          : undefined,
-      pgxLabel: `${hostPersona.name} — ${pgxMeta.label}`,
+      pgxLabel: pgxMeta.label,
       preferredLanguageLabel: preferredLanguageDisplayName(
         preferredLanguage,
         languageOtherSpecify,
@@ -1083,7 +1063,6 @@ export default function App() {
   const sdohSummary = formatFlagSummary(
     SDOH_FLAGS.filter((flag) => alertsInput[flag.key]).map((flag) => flag.title),
   );
-  const readinessLabel = readyToGenerate ? "Ready to generate" : "Needs review";
   const selectedLanguage = preferredLanguageDisplayName(
     preferredLanguage,
     languageOtherSpecify,
@@ -1097,10 +1076,10 @@ export default function App() {
       className="min-h-screen"
     >
       <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(224,242,254,0.8),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(236,253,245,0.55),_transparent_26%),linear-gradient(180deg,_hsl(var(--background)),_hsl(210_40%_98%))]">
-        <header className="sticky top-0 z-30 border-b border-border/60 bg-background/85 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-2">
+        <header className="border-b border-border/60 bg-background/80">
+          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                     Clinical decision support
@@ -1112,11 +1091,11 @@ export default function App() {
                     Demo UI — not for clinical use
                   </Badge>
                 </div>
-                <div className="space-y-1">
-                  <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+                <div className="space-y-0.5">
+                  <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                     DOODLE
                   </h1>
-                  <p className="max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+                  <p className="max-w-2xl text-sm leading-5 text-muted-foreground">
                     STI dosing and pathway checks in a guided five-step workflow
                     that keeps inputs, modifiers, and recommendations easy to
                     scan.
@@ -1162,9 +1141,9 @@ export default function App() {
 
           <TabsContent value="dosing" className="mt-0 outline-none">
             <div className="space-y-6">
-              <div className="sticky top-24 z-20 rounded-3xl border border-border/60 bg-background/85 p-4 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.32)] backdrop-blur-xl">
+              <div className="sticky top-4 z-20 rounded-3xl border border-border/60 bg-background/85 p-4 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.32)] backdrop-blur-xl">
                 <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-end justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                         Workflow progress
@@ -1173,93 +1152,10 @@ export default function App() {
                         Step {step} of 5
                       </p>
                     </div>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "rounded-full px-3 py-1",
-                        readyToGenerate
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : "border-amber-200 bg-amber-50 text-amber-700",
-                      )}
-                    >
-                      {step === 5 && generated ? "Recommendation generated" : readinessLabel}
-                    </Badge>
-                  </div>
-<<<<<<< HEAD
-
-                  <div className="space-y-2">
-                    <Label htmlFor="host-pgx-persona">Host (PGx)</Label>
-                    <Select
-                      value={hostPgxPersonaId}
-                      onValueChange={(v) => {
-                        if (isHostPgxPersonaId(v)) setHostPgxPersonaId(v);
-                      }}
-                    >
-                      <SelectTrigger id="host-pgx-persona" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {HOST_PGX_PERSONAS.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground/90">
-                        {hostPersona.name}
-                      </span>
-                      : {pgxMeta.label}.{" "}
-                      <NotationPGbaseXR className="font-medium text-foreground/80" />{" "}
-                      = {pgBaseXr}, scaling C<sub>individual</sub> in{" "}
-                      <span className="font-mono text-foreground/80">
-                        C<sub>individual</sub> = C<sub>population</sub> ×
-                        (W/70)<sup>0.75</sup> × <NotationPGbaseXR />.
-                      </span>
+                    <p className="text-sm text-muted-foreground">
+                      {generated ? "Recommendation generated" : blockerSummary}
                     </p>
                   </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="weight-slider">
-                      Weight (kg):{" "}
-                      <span className="font-normal text-muted-foreground">
-                        {weightKg} kg
-                      </span>
-                    </Label>
-                    <Slider
-                      id="weight-slider"
-                      min={40}
-                      max={200}
-                      step={1}
-                      value={[weightKg]}
-                      onValueChange={(v) => setWeightKg(v[0] ?? 40)}
-                    />
-                    <Input
-                      type="number"
-                      min={40}
-                      max={200}
-                      value={weightKg}
-                      onChange={(e) => {
-                        const n = Number(e.target.value);
-                        if (Number.isFinite(n))
-                          setWeightKg(Math.min(200, Math.max(40, n)));
-                      }}
-                      className="sm:w-28"
-                      aria-label="Weight in kilograms"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/50 p-4">
-                    <Label htmlFor="preg" className="cursor-pointer">
-                      Pregnancy status
-                    </Label>
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        id="preg"
-                        checked={pregnant}
-                        onCheckedChange={setPregnant}
-=======
                   <Progress value={((step - 1) / 4) * 100} className="h-2" />
                   <div className="grid gap-2 md:grid-cols-5">
                     {WIZARD_STEPS.map((wizardStep) => (
@@ -1270,9 +1166,7 @@ export default function App() {
                         subtitle={wizardStep.subtitle}
                         active={step === wizardStep.id}
                         completed={completedSteps.includes(wizardStep.id) || step > wizardStep.id}
-                        disabled={wizardStep.id > step}
                         onClick={() => selectStep(wizardStep.id)}
->>>>>>> f320e1c (feat: ui update)
                       />
                     ))}
                   </div>
@@ -1314,16 +1208,6 @@ export default function App() {
                     </CardHeader>
 
                     <CardContent className="space-y-8 pt-6">
-                      {stepError ? (
-                        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
-                          <AlertTriangle className="size-4" aria-hidden />
-                          <AlertTitle>Review needed</AlertTitle>
-                          <AlertDescription className="text-amber-900">
-                            {stepError}
-                          </AlertDescription>
-                        </Alert>
-                      ) : null}
-
                       {step === 1 ? (
                         <div className="grid gap-6">
                           <section className="grid gap-5">
@@ -1753,8 +1637,8 @@ export default function App() {
                               <SummaryRow label="SDOH flags" value={sdohSummary} />
                               <SummaryRow label="Language" value={selectedLanguage} />
                               <SummaryRow
-                                label="Readiness"
-                                value={readyToGenerate ? "Ready" : "Needs review"}
+                                label="Status"
+                                value={readyToGenerate ? "Complete" : blockerSummary}
                               />
                             </dl>
 
@@ -1791,13 +1675,10 @@ export default function App() {
                             </div>
 
                             {blockers.length > 0 ? (
-                              <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-950">
-                                <p className="font-medium">Missing items</p>
-                                <ul className="mt-2 space-y-1.5">
-                                  {blockers.map((blocker) => (
-                                    <li key={blocker}>{blocker}</li>
-                                  ))}
-                                </ul>
+                              <div className="space-y-1 text-sm text-destructive">
+                                {blockers.map((blocker) => (
+                                  <p key={blocker}>{blocker}</p>
+                                ))}
                               </div>
                             ) : null}
                           </section>
@@ -1819,19 +1700,13 @@ export default function App() {
 
                             <div className="rounded-3xl border border-border/60 bg-[linear-gradient(180deg,_rgba(236,253,245,0.8),_rgba(255,255,255,0.96))] p-5 shadow-[0_24px_70px_-45px_rgba(15,23,42,0.32)]">
                               <div className="space-y-5">
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <Badge
-                                    variant="outline"
-                                    className="rounded-full border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"
-                                  >
-                                    {generated ? "Recommendation generated" : "Awaiting generation"}
-                                  </Badge>
-                                  <span className="text-sm text-muted-foreground">
-                                    {readyToGenerate
+                                <p className="text-sm text-muted-foreground">
+                                  {generated
+                                    ? "Recommendation generated."
+                                    : readyToGenerate
                                       ? "All required items are present."
-                                      : "Resolve the missing items before generating."}
-                                  </span>
-                                </div>
+                                      : "Complete the remaining required items to generate the recommendation."}
+                                </p>
 
                                 <div className="space-y-2">
                                   <h3 className="text-3xl font-semibold tracking-tight text-foreground">
@@ -2046,43 +1921,49 @@ export default function App() {
                     </CardContent>
 
                     <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-6">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={moveBack}
-                        disabled={step === 1}
-                        className="rounded-full"
-                      >
-                        Back
-                      </Button>
-
-                      {step < 5 ? (
-                        <Button
-                          type="button"
-                          onClick={moveNext}
-                          className="rounded-full"
-                        >
-                          {step === 4 ? "Review recommendation" : "Next"}
-                          <ChevronRight className="size-4" aria-hidden />
-                        </Button>
-                      ) : (
-                        <div className="flex items-center gap-3">
-                          <p className="text-xs text-muted-foreground">
-                            {readyToGenerate
-                              ? "Generate when the review feels complete."
-                              : "Resolve the missing items first."}
-                          </p>
+                      <div className="w-full space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                           <Button
                             type="button"
-                            onClick={moveNext}
-                            disabled={!readyToGenerate}
+                            variant="outline"
+                            onClick={moveBack}
+                            disabled={step === 1}
                             className="rounded-full"
                           >
-                            {generated ? "Regenerate recommendation" : "Generate recommendation"}
-                            <ChevronRight className="size-4" aria-hidden />
+                            Back
                           </Button>
+
+                          {step < 5 ? (
+                            <Button
+                              type="button"
+                              onClick={moveNext}
+                              className="rounded-full"
+                            >
+                              {step === 4 ? "Review recommendation" : "Next"}
+                              <ChevronRight className="size-4" aria-hidden />
+                            </Button>
+                          ) : (
+                            <div className="flex items-center gap-3">
+                              <p className="text-xs text-muted-foreground">
+                                {readyToGenerate
+                                  ? "Generate when the review feels complete."
+                                  : "Complete the remaining required items first."}
+                              </p>
+                              <Button
+                                type="button"
+                                onClick={moveNext}
+                                className="rounded-full"
+                              >
+                                {generated ? "Regenerate recommendation" : "Generate recommendation"}
+                                <ChevronRight className="size-4" aria-hidden />
+                              </Button>
+                            </div>
+                          )}
                         </div>
-                      )}
+                        {stepError ? (
+                          <p className="text-sm text-destructive">{stepError}</p>
+                        ) : null}
+                      </div>
                     </CardFooter>
                   </Card>
                 </div>
@@ -2090,20 +1971,7 @@ export default function App() {
                 <aside className="lg:sticky lg:top-24 lg:self-start">
                   <Card className="border-border/60 bg-white/92 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.32)]">
                     <CardHeader className="space-y-2 border-b border-border/50 pb-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <CardTitle className="text-base">Live summary</CardTitle>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "rounded-full px-3 py-1",
-                            readyToGenerate
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border-amber-200 bg-amber-50 text-amber-700",
-                          )}
-                        >
-                          {readinessLabel}
-                        </Badge>
-                      </div>
+                      <CardTitle className="text-base">Live summary</CardTitle>
                       <CardDescription>
                         Always-on summary of the selected chart values and output
                         readiness.
@@ -2165,24 +2033,9 @@ export default function App() {
                           Recommendation readiness
                         </p>
                         <div className="rounded-2xl bg-muted/25 p-4">
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="text-sm text-muted-foreground">
-                              Status
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "rounded-full px-3 py-1",
-                                readyToGenerate
-                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                  : "border-amber-200 bg-amber-50 text-amber-700",
-                              )}
-                            >
-                              {readinessLabel}
-                            </Badge>
-                          </div>
+                          <p className="text-sm text-muted-foreground">{blockerSummary}</p>
                           {blockers.length > 0 ? (
-                            <ul className="mt-3 space-y-2 text-sm text-foreground/80">
+                            <ul className="mt-3 space-y-2 text-sm text-destructive">
                               {blockers.map((blocker) => (
                                 <li key={blocker}>{blocker}</li>
                               ))}
@@ -2203,390 +2056,10 @@ export default function App() {
           </TabsContent>
         </main>
 
-<<<<<<< HEAD
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <BookOpen className="size-4 shrink-0" aria-hidden />
-                  Patient education
-                </CardTitle>
-                <CardDescription>
-                  Health literacy and preferred language shape how you explain
-                  the plan, choose handouts, and arrange interpretation.
-                  {dxGono
-                    ? " With gonorrhea checked, site-specific counseling is previewed below."
-                    : ""}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="grid gap-5 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="health-literacy">Health literacy level</Label>
-                  <Select
-                    value={healthLiteracy}
-                    onValueChange={(v) =>
-                      setHealthLiteracy(v as HealthLiteracyLevel)
-                    }
-                  >
-                    <SelectTrigger id="health-literacy" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="adequate">
-                        Adequate — routine materials
-                      </SelectItem>
-                      <SelectItem value="marginal">
-                        Marginal — simplify + teach-back
-                      </SelectItem>
-                      <SelectItem value="low">
-                        Low — minimal print, spoken + visual
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Estimate from conversation, teach-back, or a brief screen;
-                    used only to prompt counseling style here.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="preferred-language">Preferred language</Label>
-                  <Select
-                    value={preferredLanguage}
-                    onValueChange={(v) =>
-                      setPreferredLanguage(v as PreferredLanguageId)
-                    }
-                  >
-                    <SelectTrigger id="preferred-language" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="english">English</SelectItem>
-                      <SelectItem value="spanish">Spanish</SelectItem>
-                      <SelectItem value="mandarin">Mandarin Chinese</SelectItem>
-                      <SelectItem value="french">French</SelectItem>
-                      <SelectItem value="tagalog">Tagalog</SelectItem>
-                      <SelectItem value="vietnamese">Vietnamese</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {preferredLanguage === "other" ? (
-                    <Input
-                      id="language-other"
-                      value={languageOtherSpecify}
-                      onChange={(e) => setLanguageOtherSpecify(e.target.value)}
-                      placeholder="Specify language"
-                      aria-label="Specify preferred language"
-                    />
-                  ) : null}
-                </div>
-                </div>
-                {dxGono ? (
-                  <div className="rounded-md border border-primary/20 bg-muted/30 p-4">
-                    <p className="mb-2 text-sm font-medium text-foreground">
-                      Gonorrhea sites (feeds handouts &amp; output education)
-                    </p>
-                    <p className="mb-2 text-xs text-muted-foreground">
-                      {formatGonorrheaSitesSummary(gonorrheaSites)}
-                    </p>
-                    <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
-                      {gonorrheaSiteEducationBullets(gonorrheaSites).map(
-                        (line) => (
-                          <li key={line}>{line}</li>
-                        ),
-                      )}
-                    </ul>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-
-            <ClearanceFormulaPanel
-              weightKg={weightKg}
-              pgBaseXr={pgBaseXr}
-              pgxProfileLabel={`${hostPersona.name} — ${pgxMeta.label}`}
-              albuminRiskCount={albuminRiskCount}
-            />
-
-            <Button
-              type="button"
-              size="lg"
-              onClick={generate}
-              className="h-auto w-full py-4 text-lg"
-            >
-              GENERATE RECOMMENDATION →
-            </Button>
-          </div>
-        )}
-
-        {view === "output" && (
-          <div className="space-y-8">
-            <Button type="button" variant="outline" onClick={reset}>
-              ← Start over
-            </Button>
-
-            <Card
-              className="border-emerald-200/80 bg-gradient-to-br from-sky-50 to-emerald-50 shadow-sm dark:from-sky-950/30 dark:to-emerald-950/30"
-              aria-live="polite"
-            >
-              <CardHeader>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Active recommendation
-                </p>
-                <CardTitle className="text-2xl sm:text-3xl">
-                  {primaryRecommendationLine}
-                </CardTitle>
-                <CardDescription className="text-base text-foreground/80">
-                  {recommendation.hardStop.active ? (
-                    recommendation.hardStop.reason
-                  ) : (
-                    <>
-                      Ceftriaxone C<sub>individual</sub> ≈{" "}
-                      {ceftriaxoneCindividualLh} L/h (
-                      {hostPersona.name}; PGx: {pgxMeta.label}){" "}
-                      (C<sub>population</sub> ={" "}
-                      {CPOPULATION_LH.ceftriaxoneGonorrhea} L/h,{" "}
-                      <NotationPGbaseXR /> = {pgBaseXr}
-                      {albuminRiskCount > 0
-                        ? `, albumin risk flags = ${albuminRiskCount}`
-                        : ""}
-                      ). See the allometric table below for the adjusted
-                      regimen context.
-                    </>
-                  )}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6 pt-0">
-                {capturedContext.length > 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    Context captured:{" "}
-                    {capturedContext.join(" · ")}
-                  </p>
-                ) : null}
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Primary drug
-                    </h3>
-                    <p className="font-medium text-foreground">
-                      {primaryRecommendationLine}
-                    </p>
-                    {recommendation.hardStop.active &&
-                    recommendation.hardStop.reason ? (
-                      <p className="text-sm text-destructive">
-                        {recommendation.hardStop.reason}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Co-treatments
-                    </h3>
-                    {recommendation.coTreatments.length > 0 ? (
-                      <ul className="space-y-2 text-sm text-foreground/90">
-                        {recommendation.coTreatments.map((drug) => (
-                          <li key={formatDrugLabel(drug)}>
-                            {formatDrugLabel(drug)}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        No additional co-treatments generated.
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Warnings
-                    </h3>
-                    {recommendation.warnings.length > 0 ? (
-                      <ul className="space-y-2 text-sm text-foreground/90">
-                        {recommendation.warnings.map((warning) => (
-                          <li key={warning}>{warning}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        No active warnings from the treatment engine.
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Context notes
-                    </h3>
-                    {recommendation.contextNotes.length > 0 ? (
-                      <ul className="space-y-2 text-sm text-foreground/90">
-                        {recommendation.contextNotes.map((note) => (
-                          <li key={note}>{note}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        No extra context notes were generated.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <ClearanceFormulaPanel
-              weightKg={weightKg}
-              pgBaseXr={pgBaseXr}
-              pgxProfileLabel={`${hostPersona.name} — ${pgxMeta.label}`}
-              albuminRiskCount={albuminRiskCount}
-            />
-
-            {alerts.length > 0 ? (
-              <>
-                <div className="space-y-4">
-                  <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                    Alert architecture
-                  </h2>
-
-                  {alerts.map((alert) => {
-                    const { Icon, variant, className, descriptionClassName } =
-                      alertAppearance(alert.severity);
-
-                    return (
-                      <Alert
-                        key={alert.id}
-                        variant={variant}
-                        className={className}
-                      >
-                        <Icon className="size-4" aria-hidden />
-                        <AlertTitle>{alert.title}</AlertTitle>
-                        <AlertDescription className={descriptionClassName}>
-                          {resolveAlertDescription(alert, gonorrheaSites)}
-                        </AlertDescription>
-                      </Alert>
-                    );
-                  })}
-                </div>
-
-                <Separator />
-              </>
-            ) : null}
-
-            <section>
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Action items
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-auto flex-col gap-2 border-primary/40 bg-primary/5 py-4 hover:bg-primary/10"
-                  onClick={handlePartnerEptHandoutPdf}
-                >
-                  <Users className="size-5" aria-hidden />
-                  Partner EPT (PDF)
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-auto flex-col gap-2 border-primary/40 bg-primary/5 py-4 hover:bg-primary/10"
-                  onClick={handlePatientHandoutPdf}
-                >
-                  <FileText className="size-5" aria-hidden />
-                  Patient handout (PDF)
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-auto flex-col gap-2 py-4"
-                  onClick={() => showPlannedFeature("Retest reminder")}
-                >
-                  <Calendar className="size-5" aria-hidden />
-                  Retest reminder
-                </Button>
-              </div>
-            </section>
-
-            <Separator />
-
-            <section className="space-y-4">
-              <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                <BookOpen className="size-4" aria-hidden />
-                Patient education (conclusion)
-              </h2>
-              <Card className="border-primary/20 bg-muted/30">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">
-                    Counseling &amp; materials checklist
-                  </CardTitle>
-                  <CardDescription>
-                    Based on the literacy and language selections from intake.
-                    {dxGono
-                      ? " Gonorrhea site choices below tailor testing and counseling language."
-                      : ""}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-6 sm:grid-cols-2">
-                  {dxGono ? (
-                    <div className="sm:col-span-2 rounded-md border border-primary/25 bg-background/80 p-4">
-                      <p className="mb-2 text-sm font-medium text-foreground">
-                        Gonorrhea — anatomic site counseling
-                      </p>
-                      <p className="mb-2 text-xs text-muted-foreground">
-                        {formatGonorrheaSitesSummary(gonorrheaSites)}
-                      </p>
-                      <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
-                        {gonorrheaSiteEducationBullets(gonorrheaSites).map(
-                          (line) => (
-                            <li key={line}>{line}</li>
-                          ),
-                        )}
-                      </ul>
-                    </div>
-                  ) : null}
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-foreground">
-                      Preferred language:{" "}
-                      <span className="font-semibold">
-                        {preferredLanguageDisplayName(
-                          preferredLanguage,
-                          languageOtherSpecify,
-                        )}
-                      </span>
-                    </p>
-                    <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
-                      {languageEducationBullets.map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="mb-2 text-sm font-medium text-foreground">
-                      Health literacy:{" "}
-                      <span className="font-semibold capitalize">
-                        {healthLiteracy}
-                      </span>
-                    </p>
-                    <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
-                      {literacyEducationBullets.map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
-          </div>
-        )}
-        </TabsContent>
-      </main>
-
-      <footer className="border-t bg-background py-6 text-center text-xs text-muted-foreground">
-        DOODLE · derived from PrecisionSTI CDSS spec · no Monte Carlo layer
-      </footer>
-=======
         <footer className="border-t border-border/60 bg-background/75 py-6 text-center text-xs text-muted-foreground backdrop-blur">
           DOODLE · demo decision support workflow
         </footer>
       </div>
->>>>>>> f320e1c (feat: ui update)
     </Tabs>
   );
 }

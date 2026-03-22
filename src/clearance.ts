@@ -19,10 +19,10 @@ export const DEFAULT_PG_BASE_XR = 1;
 
 /** Ordered keys for Host PGx profile UI. */
 export const PGX_PROFILE_IDS = [
-  "unknown",
-  "normal",
-  "abcb1-low",
-  "abcb1-high",
+  "john-mayer",
+  "lady-gaga",
+  "troye-sivan",
+  "muna",
 ] as const;
 
 export type PgxProfileId = (typeof PGX_PROFILE_IDS)[number];
@@ -32,23 +32,25 @@ export const PGX_PROFILE_PG_BASE_XR: Record<
   PgxProfileId,
   { label: string; pgBaseXr: number }
 > = {
-  unknown: {
-    label: "Your PGx — not on file yet (placeholder until your results)",
-    pgBaseXr: 1,
-  },
-  normal: {
-    label: "Your PGx — ABCB1 (MDR1) *1/*1, reference diplotype",
+  "john-mayer": {
+    label: "John Mayer",
     pgBaseXr: 0.91,
   },
-  "abcb1-low": {
-    label: "Your PGx — ABCB1 (MDR1) *2/*3, reduced transport (demo)",
+  "lady-gaga": {
+    label: "Lady Gaga",
     pgBaseXr: 0.35,
   },
-  "abcb1-high": {
-    label: "Your PGx — ABCB1 (MDR1) *1/*8, increased transport (demo)",
+  "troye-sivan": {
+    label: "Troye Sivan",
     pgBaseXr: 0.96,
   },
+  muna: {
+    label: "MUNA",
+    pgBaseXr: 1.04,
+  },
 };
+
+export const DEFAULT_PGX_PROFILE_ID: PgxProfileId = "john-mayer";
 
 export function getPgxProfileMeta(id: PgxProfileId) {
   return PGX_PROFILE_PG_BASE_XR[id];

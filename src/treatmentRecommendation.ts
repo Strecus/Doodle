@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PGX_PROFILE_ID,
   type PgxProfileId,
   CPOPULATION_LH,
   getPgxProfileMeta,
@@ -93,10 +94,10 @@ export function generateRecommendation(
     };
   }
 
-  if (input.pgxProfile !== "normal" && input.pgxProfile !== "unknown") {
+  if (input.pgxProfile !== DEFAULT_PGX_PROFILE_ID) {
     pushUnique(
       contextNotes,
-      `PGx profile ${input.pgxProfile} recorded; no guideline-driven regimen change is applied here.`,
+      `PGx profile ${getPgxProfileMeta(input.pgxProfile).label} recorded; no guideline-driven regimen change is applied here.`,
     );
   }
 

@@ -1,3 +1,5 @@
+import { DEFAULT_PGX_PROFILE_ID, getPgxProfileMeta, type PgxProfileId } from "./clearance";
+
 export type ClinicalAlertSeverity = "hard-stop" | "warning" | "info";
 
 export interface ClinicalAlert {
@@ -8,11 +10,8 @@ export interface ClinicalAlert {
 }
 
 export type AllergyProfile = "none" | "low" | "high";
-export type PgxProfile =
-  | "unknown"
-  | "normal"
-  | "abcb1-low"
-  | "abcb1-high";
+
+export type PgxProfile = PgxProfileId;
 export type GyrAResult = "not-tested" | "wild" | "mutant";
 
 export interface TreatmentInput {
@@ -50,13 +49,13 @@ export function generateAlerts(input: TreatmentInput): ClinicalAlert[] {
     });
   }
 
-  if (input.pgx === "abcb1-low") {
+  if (input.pgx !== DEFAULT_PGX_PROFILE_ID) {
+    const pgxMeta = getPgxProfileMeta(input.pgx);
     alerts.push({
-      id: "pgx-abcb1-low",
+      id: "pgx-advisory",
       severity: "warning",
       title: "PGx advisory",
-      description:
-        "ABCB1 low-function detected. Expect 2× azithromycin levels. Monitor for toxicity.",
+      description: `${pgxMeta.label} selected. Demo PGxR = ${pgxMeta.pgBaseXr}.`,
     });
   }
 
