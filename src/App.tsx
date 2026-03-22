@@ -50,7 +50,8 @@ import {
   type UsStateCode,
 } from "./mic90";
 import {
-  compareGyrSampleToRef,
+  type PocPathogenId,
+  comparePocSampleToRef,
   parseGyrAPocTxt,
 } from "./gyrAUpload";
 import {
@@ -65,6 +66,14 @@ import {
   literacyCounselingPoints,
   preferredLanguageDisplayName,
 } from "./patientEducationCopy";
+import {
+  EMPTY_GONORRHEA_SITES,
+  GONORRHEA_SITE_META,
+  type GonorrheaSiteId,
+  type GonorrheaSites,
+  formatGonorrheaSitesSummary,
+  gonorrheaSiteEducationBullets,
+} from "./gonorrheaSites";
 import {
   generateRecommendation,
   type TreatmentDrug,
@@ -87,12 +96,24 @@ type View = "intake" | "output";
 type Allergy = "none" | "low" | "high";
 type GyrA = "not-tested" | "wild" | "mutant";
 
-type GyrAUploadSummary = { mismatches: number; mutant: boolean };
+type GyrAUploadSummary = {
+  mismatches: number;
+  mutant: boolean;
+  pathogen: PocPathogenId;
+};
+
+const POC_PATHOGEN_LABEL: Record<PocPathogenId, string> = {
+  gonorrhea: "Gonorrhea (gyrA-like demo, 500 bp)",
+  syphilis: "Syphilis (synthetic demo, 500 bp)",
+  chlamydia: "Chlamydia (synthetic demo, 500 bp)",
+};
 
 function GyrAPocSection({
   fieldIdPrefix,
   gyrAPocCompleted,
   onGyrAPocCompleted,
+  pocPathogen,
+  onPocPathogenChange,
   gyrA,
   onGyrA,
   fileInputKey,
@@ -103,6 +124,8 @@ function GyrAPocSection({
   fieldIdPrefix: string;
   gyrAPocCompleted: boolean;
   onGyrAPocCompleted: (v: boolean) => void;
+  pocPathogen: PocPathogenId;
+  onPocPathogenChange: (v: PocPathogenId) => void;
   gyrA: GyrA;
   onGyrA: (v: GyrA) => void;
   fileInputKey: number;
@@ -124,17 +147,43 @@ function GyrAPocSection({
             htmlFor={`${fieldIdPrefix}-poc-done`}
             className="cursor-pointer font-medium leading-snug"
           >
-            POC gyrA test completed — I have a result file to compare
+            POC test completed — I have a result file to compare
           </Label>
           <p className="text-xs text-muted-foreground">
-            Uncheck to skip the file and enter wild-type / mutant / not tested
-            manually.
+            Pick which organism the file belongs to; upload compares to that
+            demo reference. Uncheck to enter gonorrhea gyrA wild / mutant /
+            not tested manually.
           </p>
         </div>
       </div>
 
       {gyrAPocCompleted ? (
         <div className="space-y-3 rounded-md border p-3">
+          <div className="space-y-2">
+            <Label htmlFor={`${fieldIdPrefix}-poc-pathogen`}>
+              POC file is for
+            </Label>
+            <Select
+              value={pocPathogen}
+              onValueChange={(v) => onPocPathogenChange(v as PocPathogenId)}
+            >
+              <SelectTrigger
+                id={`${fieldIdPrefix}-poc-pathogen`}
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(POC_PATHOGEN_LABEL) as PocPathogenId[]).map(
+                  (id) => (
+                    <SelectItem key={id} value={id}>
+                      {POC_PATHOGEN_LABEL[id]}
+                    </SelectItem>
+                  ),
+                )}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1">
             <Label htmlFor={`${fieldIdPrefix}-file`}>POC text file</Label>
             <p className="text-xs text-muted-foreground">
@@ -142,7 +191,11 @@ function GyrAPocSection({
               <span className="font-mono text-foreground/80">pos</span>, tab or
               space, then{" "}
               <span className="font-mono text-foreground/80">A|T|G|C</span>.
-              Extra columns are ignored.
+              Extra columns are ignored. Compared to the in-app reference for{" "}
+              <span className="font-medium text-foreground/90">
+                {POC_PATHOGEN_LABEL[pocPathogen]}
+              </span>
+              .
             </p>
           </div>
           <Input
@@ -156,17 +209,17 @@ function GyrAPocSection({
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
             <a
               className="text-primary underline"
-              href="/gyrA-examples/poc_matches_ref.txt"
+              href={`/poc-examples/${pocPathogen}_poc_wild.txt`}
               download
             >
-              Example — matches ref (no SNPs)
+              Example — wild (no SNPs vs ref)
             </a>
             <a
               className="text-primary underline"
-              href="/gyrA-examples/poc_variant_resistant.txt"
+              href={`/poc-examples/${pocPathogen}_poc_resistant.txt`}
               download
             >
-              Example — 10 SNPs vs ref (variant)
+              Example — resistant (10 SNPs vs ref)
             </a>
           </div>
           {uploadError ? (
@@ -175,12 +228,14 @@ function GyrAPocSection({
           {uploadSummary ? (
             <p className="text-sm text-muted-foreground">
               {uploadSummary.mismatches === 0
-                ? "Same as in-app reference across 500 positions — wild-type for this window."
-                : `${uploadSummary.mismatches} SNP(s) vs reference — variant; primary line switches to dual therapy (demo).`}
+                ? `Matches in-app reference for ${POC_PATHOGEN_LABEL[uploadSummary.pathogen]} — no SNPs in this window.`
+                : uploadSummary.pathogen === "gonorrhea"
+                  ? `${uploadSummary.mismatches} SNP(s) vs gonorrhea demo ref — variant; primary line switches to dual therapy (demo).`
+                  : `${uploadSummary.mismatches} SNP(s) vs ${POC_PATHOGEN_LABEL[uploadSummary.pathogen]} — demo “resistant” file; gonorrhea regimen still follows manual gyrA below.`}
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Upload a .txt to compare to the built-in reference.
+              Upload a .txt to compare to the selected reference.
             </p>
           )}
         </div>
@@ -239,6 +294,19 @@ function alertAppearance(severity: ClinicalAlert["severity"]) {
         Icon: Info,
       };
   }
+}
+
+function resolveAlertDescription(
+  alert: ClinicalAlert,
+  gonorrheaSites: GonorrheaSites,
+) {
+  if (alert.id !== "hard-stop-gonorrhea-severe-allergy") {
+    return alert.description;
+  }
+
+  return gonorrheaSites.pharyngeal
+    ? "Pharyngeal gonorrhea with high-risk beta-lactam allergy needs ID-guided treatment planning."
+    : "Gonorrhea with high-risk penicillin or cephalosporin allergy may be unsafe for ceftriaxone-based pathways. Consult Infectious Diseases.";
 }
 
 function ClearanceFormulaPanel({
@@ -345,10 +413,14 @@ export default function App() {
   const [gyrAUploadSummary, setGyrAUploadSummary] =
     useState<GyrAUploadSummary | null>(null);
   const [gyrAFileKey, setGyrAFileKey] = useState(0);
+  const [pocPathogen, setPocPathogen] = useState<PocPathogenId>("gonorrhea");
   /** US state for gonorrhea regional MIC routing (no ZIP in this UI). */
   const [pocMicState, setPocMicState] = useState<UsStateCode>("NY");
 
   const [dxGono, setDxGono] = useState(false);
+  const [gonorrheaSites, setGonorrheaSites] = useState<GonorrheaSites>(
+    EMPTY_GONORRHEA_SITES,
+  );
   const [dxChlam, setDxChlam] = useState(false);
   const [dxSyph, setDxSyph] = useState(false);
   const [dxTrich, setDxTrich] = useState(false);
@@ -383,11 +455,12 @@ export default function App() {
   const albuminRiskCount = [icu, liver, malnourished, ckd].filter(Boolean).length;
 
   const effectiveGyrA = useMemo((): GyrA => {
-    if (gyrAPocCompleted) {
-      if (gyrAUploadSummary) {
-        return gyrAUploadSummary.mutant ? "mutant" : "wild";
-      }
-      return "not-tested";
+    if (
+      gyrAPocCompleted &&
+      gyrAUploadSummary &&
+      gyrAUploadSummary.pathogen === "gonorrhea"
+    ) {
+      return gyrAUploadSummary.mutant ? "mutant" : "wild";
     }
     return gyrA;
   }, [gyrAPocCompleted, gyrAUploadSummary, gyrA]);
@@ -433,6 +506,17 @@ export default function App() {
   };
 
   const alerts = generateAlerts(alertInput);
+  const handoutSummaryLine = recommendation.hardStop.active
+    ? recommendation.hardStop.reason ?? primaryRecommendationLine
+    : primaryRecommendationLine;
+  const capturedContext = [
+    pregnant && "pregnancy",
+    effectiveGyrA === "mutant" && "gyrA variant (POC vs ref)",
+    dxGono && formatGonorrheaSitesSummary(gonorrheaSites),
+    dxChlam && "chlamydia",
+    dxSyph && "syphilis",
+    dxTrich && "trichomoniasis",
+  ].filter((value): value is string => Boolean(value));
 
   const ceftriaxoneCindividualLh = useMemo(() => {
     const rows = clearanceRowsForPatient(weightKg, pgBaseXr, albuminRiskCount);
@@ -457,6 +541,13 @@ export default function App() {
     }
   }
 
+  function onPocPathogenChange(v: PocPathogenId) {
+    setPocPathogen(v);
+    setGyrAUploadError(null);
+    setGyrAUploadSummary(null);
+    setGyrAFileKey((k) => k + 1);
+  }
+
   function onGyrAFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -470,10 +561,14 @@ export default function App() {
           setGyrAUploadError(parsed.error);
           return;
         }
-        const { mismatchCount } = compareGyrSampleToRef(parsed.bases);
+        const { mismatchCount } = comparePocSampleToRef(
+          parsed.bases,
+          pocPathogen,
+        );
         setGyrAUploadSummary({
           mismatches: mismatchCount,
           mutant: mismatchCount > 0,
+          pathogen: pocPathogen,
         });
       })
       .catch(() => setGyrAUploadError("Could not read file."));
@@ -485,9 +580,11 @@ export default function App() {
     setGyrAUploadError(null);
     setGyrAUploadSummary(null);
     setGyrAFileKey((k) => k + 1);
+    setPocPathogen("gonorrhea");
     setHealthLiteracy("adequate");
     setPreferredLanguage("english");
     setLanguageOtherSpecify("");
+    setGonorrheaSites(EMPTY_GONORRHEA_SITES);
   }
 
   function generate() {
@@ -496,6 +593,47 @@ export default function App() {
 
   function showPlannedFeature(label: string) {
     window.alert(`Feature coming soon: ${label}`);
+  }
+
+  async function handlePartnerEptHandoutPdf() {
+    const { downloadPartnerEptHandoutPdf } = await import(
+      "./partnerEptHandoutPdf"
+    );
+    downloadPartnerEptHandoutPdf({
+      generatedAt: new Date(),
+      dxGono,
+      gonoSites: gonorrheaSites,
+      dxChlam,
+      dxSyph,
+      dxTrich,
+      preferredLanguageLabel: preferredLanguageDisplayName(
+        preferredLanguage,
+        languageOtherSpecify,
+      ),
+    });
+  }
+
+  async function handlePatientHandoutPdf() {
+    const { downloadPatientHandoutPdf } = await import("./patientHandoutPdf");
+    downloadPatientHandoutPdf({
+      generatedAt: new Date(),
+      hardStop: recommendation.hardStop.active,
+      effectiveGyrA,
+      mainLine: handoutSummaryLine,
+      dxGono,
+      gonoSites: gonorrheaSites,
+      dxChlam,
+      dxSyph,
+      dxTrich,
+      pregnant,
+      weightKg,
+      ceftriaxoneCindividualLh,
+      pgxLabel: pgxMeta.label,
+      preferredLanguageLabel: preferredLanguageDisplayName(
+        preferredLanguage,
+        languageOtherSpecify,
+      ),
+    });
   }
 
   return (
@@ -668,8 +806,24 @@ export default function App() {
                       Confirmed diagnosis
                     </legend>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="dx-Gonorrhea"
+                          checked={dxGono}
+                          onCheckedChange={(c) => {
+                            const on = c === true;
+                            setDxGono(on);
+                            if (!on) setGonorrheaSites(EMPTY_GONORRHEA_SITES);
+                          }}
+                        />
+                        <Label
+                          htmlFor="dx-Gonorrhea"
+                          className="cursor-pointer font-normal"
+                        >
+                          Gonorrhea
+                        </Label>
+                      </div>
                       {[
-                        ["Gonorrhea", dxGono, setDxGono],
                         ["Chlamydia", dxChlam, setDxChlam],
                         ["Syphilis", dxSyph, setDxSyph],
                         ["Trichomoniasis", dxTrich, setDxTrich],
@@ -694,6 +848,47 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+                    {dxGono ? (
+                      <div className="mt-4 space-y-3 rounded-md border border-dashed border-primary/30 bg-primary/5 p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          Gonorrhea anatomic site
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Select every site with exposure or symptoms. Education,
+                          MIC context, and PDF handouts use this to stress the
+                          right swabs and partner testing.
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-1">
+                          {(
+                            [
+                              "urogenital",
+                              "rectal",
+                              "pharyngeal",
+                            ] as GonorrheaSiteId[]
+                          ).map((id) => (
+                            <div key={id} className="flex items-start gap-2">
+                              <Checkbox
+                                id={`gono-site-${id}`}
+                                checked={gonorrheaSites[id]}
+                                onCheckedChange={(c) =>
+                                  setGonorrheaSites((prev) => ({
+                                    ...prev,
+                                    [id]: c === true,
+                                  }))
+                                }
+                                className="mt-0.5"
+                              />
+                              <Label
+                                htmlFor={`gono-site-${id}`}
+                                className="cursor-pointer font-normal leading-snug"
+                              >
+                                {GONORRHEA_SITE_META[id].label}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </fieldset>
 
                   {dxGono ? (
@@ -709,6 +904,13 @@ export default function App() {
                         <span className="font-medium">state of care / residence</span>{" "}
                         to map into the regional MIC archetype (no ZIP entry in
                         this screen).
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Extra-genital gonorrhea (rectal or throat) is not
+                        detected by urine alone—match NAAT swabs to the sites you
+                        checked under{" "}
+                        <span className="font-medium">Confirmed diagnosis</span>
+                        .
                       </p>
 
                       <div className="space-y-2">
@@ -757,6 +959,8 @@ export default function App() {
                         fieldIdPrefix="gono"
                         gyrAPocCompleted={gyrAPocCompleted}
                         onGyrAPocCompleted={onGyrAPocCompletedChange}
+                        pocPathogen={pocPathogen}
+                        onPocPathogenChange={onPocPathogenChange}
                         gyrA={gyrA}
                         onGyrA={setGyrA}
                         fileInputKey={gyrAFileKey}
@@ -779,6 +983,8 @@ export default function App() {
                         fieldIdPrefix="simple"
                         gyrAPocCompleted={gyrAPocCompleted}
                         onGyrAPocCompleted={onGyrAPocCompletedChange}
+                        pocPathogen={pocPathogen}
+                        onPocPathogenChange={onPocPathogenChange}
                         gyrA={gyrA}
                         onGyrA={setGyrA}
                         fileInputKey={gyrAFileKey}
@@ -871,9 +1077,13 @@ export default function App() {
                 <CardDescription>
                   Health literacy and preferred language shape how you explain
                   the plan, choose handouts, and arrange interpretation.
+                  {dxGono
+                    ? " With gonorrhea checked, site-specific counseling is previewed below."
+                    : ""}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-5 sm:grid-cols-2">
+              <CardContent className="space-y-5">
+                <div className="grid gap-5 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="health-literacy">Health literacy level</Label>
                   <Select
@@ -933,6 +1143,24 @@ export default function App() {
                     />
                   ) : null}
                 </div>
+                </div>
+                {dxGono ? (
+                  <div className="rounded-md border border-primary/20 bg-muted/30 p-4">
+                    <p className="mb-2 text-sm font-medium text-foreground">
+                      Gonorrhea sites (feeds handouts &amp; output education)
+                    </p>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      {formatGonorrheaSitesSummary(gonorrheaSites)}
+                    </p>
+                    <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+                      {gonorrheaSiteEducationBullets(gonorrheaSites).map(
+                        (line) => (
+                          <li key={line}>{line}</li>
+                        ),
+                      )}
+                    </ul>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
 
@@ -990,70 +1218,78 @@ export default function App() {
                   )}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-6 pt-0 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Primary drug
-                  </h3>
-                  <p className="font-medium text-foreground">
-                    {primaryRecommendationLine}
+              <CardContent className="space-y-6 pt-0">
+                {capturedContext.length > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Context captured:{" "}
+                    {capturedContext.join(" · ")}
                   </p>
-                  {recommendation.hardStop.active &&
-                  recommendation.hardStop.reason ? (
-                    <p className="text-sm text-destructive">
-                      {recommendation.hardStop.reason}
+                ) : null}
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Primary drug
+                    </h3>
+                    <p className="font-medium text-foreground">
+                      {primaryRecommendationLine}
                     </p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Co-treatments
-                  </h3>
-                  {recommendation.coTreatments.length > 0 ? (
-                    <ul className="space-y-2 text-sm text-foreground/90">
-                      {recommendation.coTreatments.map((drug) => (
-                        <li key={formatDrugLabel(drug)}>
-                          {formatDrugLabel(drug)}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No additional co-treatments generated.
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Warnings
-                  </h3>
-                  {recommendation.warnings.length > 0 ? (
-                    <ul className="space-y-2 text-sm text-foreground/90">
-                      {recommendation.warnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No active warnings from the treatment engine.
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Context notes
-                  </h3>
-                  {recommendation.contextNotes.length > 0 ? (
-                    <ul className="space-y-2 text-sm text-foreground/90">
-                      {recommendation.contextNotes.map((note) => (
-                        <li key={note}>{note}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No extra context notes were generated.
-                    </p>
-                  )}
+                    {recommendation.hardStop.active &&
+                    recommendation.hardStop.reason ? (
+                      <p className="text-sm text-destructive">
+                        {recommendation.hardStop.reason}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Co-treatments
+                    </h3>
+                    {recommendation.coTreatments.length > 0 ? (
+                      <ul className="space-y-2 text-sm text-foreground/90">
+                        {recommendation.coTreatments.map((drug) => (
+                          <li key={formatDrugLabel(drug)}>
+                            {formatDrugLabel(drug)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No additional co-treatments generated.
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Warnings
+                    </h3>
+                    {recommendation.warnings.length > 0 ? (
+                      <ul className="space-y-2 text-sm text-foreground/90">
+                        {recommendation.warnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No active warnings from the treatment engine.
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Context notes
+                    </h3>
+                    {recommendation.contextNotes.length > 0 ? (
+                      <ul className="space-y-2 text-sm text-foreground/90">
+                        {recommendation.contextNotes.map((note) => (
+                          <li key={note}>{note}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No extra context notes were generated.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1085,7 +1321,7 @@ export default function App() {
                         <Icon className="size-4" aria-hidden />
                         <AlertTitle>{alert.title}</AlertTitle>
                         <AlertDescription className={descriptionClassName}>
-                          {alert.description}
+                          {resolveAlertDescription(alert, gonorrheaSites)}
                         </AlertDescription>
                       </Alert>
                     );
@@ -1101,22 +1337,33 @@ export default function App() {
                 Action items
               </h2>
               <div className="grid gap-3 sm:grid-cols-3">
-                {[
-                  ["Partner EPT Rx", Users],
-                  ["Patient handout", FileText],
-                  ["Retest reminder", Calendar],
-                ].map(([label, Icon]) => (
-                  <Button
-                    key={label as string}
-                    type="button"
-                    variant="outline"
-                    className="h-auto flex-col gap-2 py-4"
-                    onClick={() => showPlannedFeature(label as string)}
-                  >
-                    <Icon className="size-5" aria-hidden />
-                    {label as string}
-                  </Button>
-                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto flex-col gap-2 border-primary/40 bg-primary/5 py-4 hover:bg-primary/10"
+                  onClick={handlePartnerEptHandoutPdf}
+                >
+                  <Users className="size-5" aria-hidden />
+                  Partner EPT (PDF)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto flex-col gap-2 border-primary/40 bg-primary/5 py-4 hover:bg-primary/10"
+                  onClick={handlePatientHandoutPdf}
+                >
+                  <FileText className="size-5" aria-hidden />
+                  Patient handout (PDF)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto flex-col gap-2 py-4"
+                  onClick={() => showPlannedFeature("Retest reminder")}
+                >
+                  <Calendar className="size-5" aria-hidden />
+                  Retest reminder
+                </Button>
               </div>
             </section>
 
@@ -1134,9 +1381,29 @@ export default function App() {
                   </CardTitle>
                   <CardDescription>
                     Based on the literacy and language selections from intake.
+                    {dxGono
+                      ? " Gonorrhea site choices below tailor testing and counseling language."
+                      : ""}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-6 sm:grid-cols-2">
+                  {dxGono ? (
+                    <div className="sm:col-span-2 rounded-md border border-primary/25 bg-background/80 p-4">
+                      <p className="mb-2 text-sm font-medium text-foreground">
+                        Gonorrhea — anatomic site counseling
+                      </p>
+                      <p className="mb-2 text-xs text-muted-foreground">
+                        {formatGonorrheaSitesSummary(gonorrheaSites)}
+                      </p>
+                      <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+                        {gonorrheaSiteEducationBullets(gonorrheaSites).map(
+                          (line) => (
+                            <li key={line}>{line}</li>
+                          ),
+                        )}
+                      </ul>
+                    </div>
+                  ) : null}
                   <div>
                     <p className="mb-2 text-sm font-medium text-foreground">
                       Preferred language:{" "}
