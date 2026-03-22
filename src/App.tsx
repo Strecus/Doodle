@@ -51,7 +51,8 @@ import {
   type UsStateCode,
 } from "./mic90";
 import {
-  compareGyrSampleToRef,
+  type PocPathogenId,
+  comparePocSampleToRef,
   parseGyrAPocTxt,
 } from "./gyrAUpload";
 import {
@@ -78,12 +79,24 @@ type View = "intake" | "output";
 type Allergy = "none" | "low" | "high";
 type GyrA = "not-tested" | "wild" | "mutant";
 
-type GyrAUploadSummary = { mismatches: number; mutant: boolean };
+type GyrAUploadSummary = {
+  mismatches: number;
+  mutant: boolean;
+  pathogen: PocPathogenId;
+};
+
+const POC_PATHOGEN_LABEL: Record<PocPathogenId, string> = {
+  gonorrhea: "Gonorrhea (gyrA-like demo, 500 bp)",
+  syphilis: "Syphilis (synthetic demo, 500 bp)",
+  chlamydia: "Chlamydia (synthetic demo, 500 bp)",
+};
 
 function GyrAPocSection({
   fieldIdPrefix,
   gyrAPocCompleted,
   onGyrAPocCompleted,
+  pocPathogen,
+  onPocPathogenChange,
   gyrA,
   onGyrA,
   fileInputKey,
@@ -94,6 +107,8 @@ function GyrAPocSection({
   fieldIdPrefix: string;
   gyrAPocCompleted: boolean;
   onGyrAPocCompleted: (v: boolean) => void;
+  pocPathogen: PocPathogenId;
+  onPocPathogenChange: (v: PocPathogenId) => void;
   gyrA: GyrA;
   onGyrA: (v: GyrA) => void;
   fileInputKey: number;
@@ -115,17 +130,43 @@ function GyrAPocSection({
             htmlFor={`${fieldIdPrefix}-poc-done`}
             className="cursor-pointer font-medium leading-snug"
           >
-            POC gyrA test completed — I have a result file to compare
+            POC test completed — I have a result file to compare
           </Label>
           <p className="text-xs text-muted-foreground">
-            Uncheck to skip the file and enter wild-type / mutant / not tested
-            manually.
+            Pick which organism the file belongs to; upload compares to that
+            demo reference. Uncheck to enter gonorrhea gyrA wild / mutant /
+            not tested manually.
           </p>
         </div>
       </div>
 
       {gyrAPocCompleted ? (
         <div className="space-y-3 rounded-md border p-3">
+          <div className="space-y-2">
+            <Label htmlFor={`${fieldIdPrefix}-poc-pathogen`}>
+              POC file is for
+            </Label>
+            <Select
+              value={pocPathogen}
+              onValueChange={(v) => onPocPathogenChange(v as PocPathogenId)}
+            >
+              <SelectTrigger
+                id={`${fieldIdPrefix}-poc-pathogen`}
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(POC_PATHOGEN_LABEL) as PocPathogenId[]).map(
+                  (id) => (
+                    <SelectItem key={id} value={id}>
+                      {POC_PATHOGEN_LABEL[id]}
+                    </SelectItem>
+                  ),
+                )}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1">
             <Label htmlFor={`${fieldIdPrefix}-file`}>POC text file</Label>
             <p className="text-xs text-muted-foreground">
@@ -133,7 +174,11 @@ function GyrAPocSection({
               <span className="font-mono text-foreground/80">pos</span>, tab or
               space, then{" "}
               <span className="font-mono text-foreground/80">A|T|G|C</span>.
-              Extra columns are ignored.
+              Extra columns are ignored. Compared to the in-app reference for{" "}
+              <span className="font-medium text-foreground/90">
+                {POC_PATHOGEN_LABEL[pocPathogen]}
+              </span>
+              .
             </p>
           </div>
           <Input
@@ -147,17 +192,17 @@ function GyrAPocSection({
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
             <a
               className="text-primary underline"
-              href="/gyrA-examples/poc_matches_ref.txt"
+              href={`/poc-examples/${pocPathogen}_poc_wild.txt`}
               download
             >
-              Example — matches ref (no SNPs)
+              Example — wild (no SNPs vs ref)
             </a>
             <a
               className="text-primary underline"
-              href="/gyrA-examples/poc_variant_resistant.txt"
+              href={`/poc-examples/${pocPathogen}_poc_resistant.txt`}
               download
             >
-              Example — 10 SNPs vs ref (variant)
+              Example — resistant (10 SNPs vs ref)
             </a>
           </div>
           {uploadError ? (
@@ -166,12 +211,14 @@ function GyrAPocSection({
           {uploadSummary ? (
             <p className="text-sm text-muted-foreground">
               {uploadSummary.mismatches === 0
-                ? "Same as in-app reference across 500 positions — wild-type for this window."
-                : `${uploadSummary.mismatches} SNP(s) vs reference — variant; primary line switches to dual therapy (demo).`}
+                ? `Matches in-app reference for ${POC_PATHOGEN_LABEL[uploadSummary.pathogen]} — no SNPs in this window.`
+                : uploadSummary.pathogen === "gonorrhea"
+                  ? `${uploadSummary.mismatches} SNP(s) vs gonorrhea demo ref — variant; primary line switches to dual therapy (demo).`
+                  : `${uploadSummary.mismatches} SNP(s) vs ${POC_PATHOGEN_LABEL[uploadSummary.pathogen]} — demo “resistant” file; gonorrhea regimen still follows manual gyrA below.`}
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Upload a .txt to compare to the built-in reference.
+              Upload a .txt to compare to the selected reference.
             </p>
           )}
         </div>
@@ -279,6 +326,7 @@ export default function App() {
   const [gyrAUploadSummary, setGyrAUploadSummary] =
     useState<GyrAUploadSummary | null>(null);
   const [gyrAFileKey, setGyrAFileKey] = useState(0);
+  const [pocPathogen, setPocPathogen] = useState<PocPathogenId>("gonorrhea");
   /** US state for gonorrhea regional MIC routing (no ZIP in this UI). */
   const [pocMicState, setPocMicState] = useState<UsStateCode>("NY");
 
@@ -316,11 +364,12 @@ export default function App() {
   const pgBaseXr = pgxMeta.pgBaseXr;
 
   const effectiveGyrA = useMemo((): GyrA => {
-    if (gyrAPocCompleted) {
-      if (gyrAUploadSummary) {
-        return gyrAUploadSummary.mutant ? "mutant" : "wild";
-      }
-      return "not-tested";
+    if (
+      gyrAPocCompleted &&
+      gyrAUploadSummary &&
+      gyrAUploadSummary.pathogen === "gonorrhea"
+    ) {
+      return gyrAUploadSummary.mutant ? "mutant" : "wild";
     }
     return gyrA;
   }, [gyrAPocCompleted, gyrAUploadSummary, gyrA]);
@@ -355,6 +404,13 @@ export default function App() {
     }
   }
 
+  function onPocPathogenChange(v: PocPathogenId) {
+    setPocPathogen(v);
+    setGyrAUploadError(null);
+    setGyrAUploadSummary(null);
+    setGyrAFileKey((k) => k + 1);
+  }
+
   function onGyrAFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -368,10 +424,14 @@ export default function App() {
           setGyrAUploadError(parsed.error);
           return;
         }
-        const { mismatchCount } = compareGyrSampleToRef(parsed.bases);
+        const { mismatchCount } = comparePocSampleToRef(
+          parsed.bases,
+          pocPathogen,
+        );
         setGyrAUploadSummary({
           mismatches: mismatchCount,
           mutant: mismatchCount > 0,
+          pathogen: pocPathogen,
         });
       })
       .catch(() => setGyrAUploadError("Could not read file."));
@@ -384,6 +444,7 @@ export default function App() {
     setGyrAUploadError(null);
     setGyrAUploadSummary(null);
     setGyrAFileKey((k) => k + 1);
+    setPocPathogen("gonorrhea");
     setHealthLiteracy("adequate");
     setPreferredLanguage("english");
     setLanguageOtherSpecify("");
@@ -395,6 +456,28 @@ export default function App() {
       setLoading(false);
       setView("output");
     }, 1500);
+  }
+
+  async function handlePatientHandoutPdf() {
+    const { downloadPatientHandoutPdf } = await import("./patientHandoutPdf");
+    downloadPatientHandoutPdf({
+      generatedAt: new Date(),
+      hardStop,
+      effectiveGyrA,
+      mainLine,
+      dxGono,
+      dxChlam,
+      dxSyph,
+      dxTrich,
+      pregnant,
+      weightKg,
+      ceftriaxoneCindividualLh,
+      pgxLabel: pgxMeta.label,
+      preferredLanguageLabel: preferredLanguageDisplayName(
+        preferredLanguage,
+        languageOtherSpecify,
+      ),
+    });
   }
 
   return (
@@ -647,6 +730,8 @@ export default function App() {
                         fieldIdPrefix="gono"
                         gyrAPocCompleted={gyrAPocCompleted}
                         onGyrAPocCompleted={onGyrAPocCompletedChange}
+                        pocPathogen={pocPathogen}
+                        onPocPathogenChange={onPocPathogenChange}
                         gyrA={gyrA}
                         onGyrA={setGyrA}
                         fileInputKey={gyrAFileKey}
@@ -669,6 +754,8 @@ export default function App() {
                         fieldIdPrefix="simple"
                         gyrAPocCompleted={gyrAPocCompleted}
                         onGyrAPocCompleted={onGyrAPocCompletedChange}
+                        pocPathogen={pocPathogen}
+                        onPocPathogenChange={onPocPathogenChange}
                         gyrA={gyrA}
                         onGyrA={setGyrA}
                         fileInputKey={gyrAFileKey}
@@ -961,21 +1048,31 @@ export default function App() {
                 Action items
               </h2>
               <div className="grid gap-3 sm:grid-cols-3">
-                {[
-                  ["Partner EPT Rx", Users],
-                  ["Patient handout", FileText],
-                  ["Retest reminder", Calendar],
-                ].map(([label, Icon]) => (
-                  <Button
-                    key={label as string}
-                    type="button"
-                    variant="outline"
-                    className="h-auto flex-col gap-2 py-4"
-                  >
-                    <Icon className="size-5" aria-hidden />
-                    {label as string}
-                  </Button>
-                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto flex-col gap-2 py-4"
+                >
+                  <Users className="size-5" aria-hidden />
+                  Partner EPT Rx
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto flex-col gap-2 border-primary/40 bg-primary/5 py-4 hover:bg-primary/10"
+                  onClick={handlePatientHandoutPdf}
+                >
+                  <FileText className="size-5" aria-hidden />
+                  Patient handout (PDF)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto flex-col gap-2 py-4"
+                >
+                  <Calendar className="size-5" aria-hidden />
+                  Retest reminder
+                </Button>
               </div>
             </section>
 
